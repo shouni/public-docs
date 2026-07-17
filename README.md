@@ -10,14 +10,12 @@
 public-docs/
 ├── README.md
 └── docs/
-    └── AI_Fortress_Architecture.pdf
 ```
 
 ## Documents
 
 | Path | Description |
 | --- | --- |
-| `docs/AI_Fortress_Architecture.pdf` | AI Fortress Architecture に関する設計資料 |
 
 ## Update Workflow
 
