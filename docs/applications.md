@@ -11,7 +11,7 @@
 
 コア基盤およびAIライブラリ群を統合し、Cloud Run / Cloud Tasks 上で動作する最終成果物アプリケーションです。
 
-### AP Music
+### AP Music Poc
 
 Lyriaによる音楽生成パイプラインを、Cloud RunとCloud TasksでWebアプリケーション化した**PoC**（Technical Demonstration）です。商用プロダクトではないため、プロンプトテンプレートや品質制御の詳細は意図的に簡略化しています。非同期化の骨格がそのまま読めることを優先した構成です。
 
@@ -21,7 +21,7 @@ Lyriaによる音楽生成パイプラインを、Cloud RunとCloud TasksでWeb�
 
 非同期ワークフローの組み立てとシーケンスは「[AI音楽生成APIをCloud RunとCloud Tasksで非同期オーケストレーションする設計](https://zenn.dev/snknsk/articles/ai-music-orchestrator)」で詳しく書いています。
 
-[GitHub - shouni/ap-music](https://github.com/shouni/ap-music)
+[GitHub - shouni/ap-music-poc](https://github.com/shouni/ap-music-poc)
 
 ---
 
