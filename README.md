@@ -16,6 +16,7 @@ public-docs/
 
 | Path | Description |
 | --- | --- |
+| [docs/documentation-guideline.md](docs/documentation-guideline.md) | このリポジトリに置くドキュメントの書き方（構成、決定の残し方、公開前チェック） |
 
 ## Update Workflow
 
