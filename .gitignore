@@ -1,12 +1,34 @@
-node_modules
-.env
-
-.idea/
-*.iml
-
+# OS
 .DS_Store
+._*
 Thumbs.db
 
-*.test
-*.out
-/story/
+# Editors / IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*~
+
+# Office / LibreOffice の一時ファイル
+~$*.doc*
+~$*.xls*
+~$*.ppt*
+.~lock.*#
+
+# ドキュメント生成の中間・出力物
+/build/
+/dist/
+/site/
+*.aux
+*.toc
+*.log
+
+# 秘匿情報
+.env
+.env.*
+*.pem
+*.key
+
+# ツール用（textlint / markdownlint など）
+node_modules/
