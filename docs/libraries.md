@@ -46,9 +46,23 @@ Go で GCP・AI モデル・各種ストレージをつなぐ公開ライブラ�
 
 ---
 
+### go-serve-kit
+
+HTTP サービスが**応答を返す側**で毎回書くことになる定型——防御的ヘッダー、表現の出し分け、役割の宣言——だけを引き受けます。サーバーそのものは持ちません。`respond` / `secureheaders` / `serverrole` の3パッケージが互いに独立して入っており、**`go.mod`の`require`は空です**。
+
+元は`gcp-kit`に同居していましたが、いずれもGCPに依存しない処理だったため切り出しました。クラウドを使わないHTTPサービスがCloud Run向けのキットごと取り込む形になっていたためで、`gcp-kit`との間に依存はありません。
+
+* **表現の選択と `Vary: Accept` を切り離さない**: `respond.WantsJSON` は `ResponseWriter` を受け取り、判定と同時に `Vary: Accept` を立てます。同じ URL が `Accept` で中身を変えるのにキャッシュへ伝えないと、CDN を挟んだとき JSON を求めたクライアントへ HTML が返りえます。**5つの兄弟アプリがこの1行を写し取っていて、5つとも `Vary` を落としていました**。判定に `w` を要求すれば、宣言だけ忘れることが構造的に起きません。判定は `Accept` に `application/json` が含まれるかだけを見ます。q値まで解釈しないのは、利用側がいずれも明示的に `Accept` を送っているためです。
+* **役割の未設定を `both` に丸めない**: `serverrole` は `web` / `worker` / `both` の語彙と `Parse` だけを持ち、**未設定と未知の値はどちらもエラーにします**。未設定を`both`に落とすと、環境変数が1つ欠けただけで公開側にworkerのルートが復活します。未知の値を黙って受け入れると、今度は何のルートも提供しないサービスがデプロイされます。どちらも起動時に落とすほうが安全です。
+* **ヘッダーの既定は「何も許可しない」**: `secureheaders` の既定は外部オリジンを1つも許可せず、インラインスタイルも許しません。第三者製のJS/CSSをCDNではなく自前配信している前提で、足りない分だけ設定で開けます。**既定値は、兄弟アプリが1バイト違わず同じものを持っていた**ところから起こしています。
+
+[GitHub - shouni/go-serve-kit](https://github.com/shouni/go-serve-kit)
+
+---
+
 ### gcp-kit
 
-Cloud Run 上のWebアプリと、Cloud Tasksで動く非同期ワーカーが毎回同じように書くことになる部分——ログイン、セッション、タスクの投入と受信、ログの体裁——だけを引き受けます。8つのパッケージは独立していて、必要なものだけをimportできます。
+Cloud Run 上のWebアプリと、Cloud Tasksで動く非同期ワーカーが毎回同じように書くことになる部分——ログイン、セッション、タスクの投入と受信、ログの体裁——だけを引き受けます。5つのパッケージ（`auth` / `cloudlog` / `cloudrun` / `tasks` / `worker`）は独立していて、必要なものだけをimportできます。
 
 * **認証は「契約」と「実装」に分かれている**: `auth` が持つのは `Authenticator`（`Authenticate(w, r)`）という契約と、
   それを組み合わせる `Require` / `Protected` だけで、標準ライブラリしか使いません。実装は人向けの `auth/session`
@@ -62,20 +76,15 @@ Cloud Run 上のWebアプリと、Cloud Tasksで動く非同期ワーカーが�
   RFC 6750 に沿って 401 `invalid_token`（取り直せば直る）か 403 `insufficient_scope`（取り直しても直らない）を
   受け取り、何も出していないブラウザはログイン画面へ送られます。**最後の方式に答えさせると、JSON を求めた
   エージェントに HTML のログイン画面が返ります**。
-* **表現の選択と `Vary: Accept` を切り離さない**: `negotiate.WantsJSON` は `ResponseWriter` を受け取り、判定と同時に
-  `Vary: Accept` を立てます。同じ URL が `Accept` で中身を変えるのにキャッシュへ伝えないと、CDN を挟んだとき
-  JSON を求めたクライアントへ HTML が返りえます。**5アプリがこの1行を写し取っていて、5つとも `Vary` を落として
-  いました**。判定に `w` を要求すれば、宣言だけ忘れることが構造的に起きません。
 * **audience だけでは呼び出し元を絞れない**: 受信したOIDCトークンは、署名とaudienceに加えて**サービスアカウントの許可リスト**まで照合します。audienceは誰でも指定できる文字列に過ぎず、それだけでは「このURLを知っている誰か」までしか絞れないためです。
 * **設定漏れは起動時に落とす**: 検証器は`Configured()`を持ちます。**OIDCの設定漏れにリクエスト時まで気づかないと、Cloud Tasksがリトライを重ねた末にタスクを破棄します**。起動時に落としたほうが、失敗が1回で済みます。
-* **役割の未設定を `both` に丸めない**: `serverrole`は`web` / `worker` / `both`の語彙と`Parse`だけを持ち、**未設定と未知の値はエラーにします**。未設定を`both`に落とすと、環境変数が1つ欠けただけで公開側にworkerのルートが復活してしまうためです。役割ごとに何を提供するかは利用側のrouterが決めるので、4つ目の役割はこのパッケージを変更せずに足せます。
 * **`DispatchDeadline` はワーカーの実効上限**: 未指定だとCloud Tasksの既定10分が上限になり、Cloud Runの`timeout`をいくら伸ばしても超えられません。**アプリ側の全体タイムアウトはこれより短く**取ります。でないと、失敗を記録する前にcontextごと打ち切られます。
 * **ログの体裁だけを直し、出力先とレベルは持たない**: `cloudlog`はslog既定の`level`/`msg`を`severity`/`message`へ詰め替えます。これが無いとLogs Explorerで全エントリがINFO扱いになるためです。逆に、どこへ出すか・どのレベルから出すかはGCPに依存しないので、意図的にアプリケーション側へ残しています。
 * **タスクの型が、投入側と受信側の契約になる**: `tasks`と`worker`がGenericsの`T`を共有するため、投入時のシリアライズと受信時のデコードが同じ型に紐づきます。決定的な名前での投入（`ALREADY_EXISTS`は成功扱い）、`worker.ErrPermanent`による打ち切り、再試行回数の参照が揃っているので、冪等に書けます。
 
 このキットが前提にしている Cloud Run 側の構成は、3本に分けて書いています。
 
-* 1つのイメージを web / worker の2サービスに分け、`serverrole` で依存グラフを切り替える：[Cloud Run で 1 つのイメージを web/worker に分け、権限と設定を絞る](https://zenn.dev/snknsk/articles/cloudrun-web-worker-split)
+* 1つのイメージを web / worker の2サービスに分け、役割で依存グラフを切り替える：[Cloud Run で 1 つのイメージを web/worker に分け、権限と設定を絞る](https://zenn.dev/snknsk/articles/cloudrun-web-worker-split)
 * `tasks` / `worker` に相当する非同期処理を、Go と Python で並べた比較：[Cloud Run + Cloud Tasks の非同期処理を Go と Python で比較する](https://zenn.dev/snknsk/articles/cloudrun-cloudtasks-go-python)
 * 環境変数やモデル名をアプリのビルドから切り離す：[モデル名を変えるたびに、アプリをフルビルドしていた。Cloud Run の設定を Terraform へ移す](https://zenn.dev/snknsk/articles/cloudrun-config-terraform-import)
 
