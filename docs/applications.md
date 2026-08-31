@@ -13,7 +13,7 @@
 
 ### AP Music
 
-Lyriaによる音楽生成パイプラインを、Cloud RunとCloud TasksでWebアプリケーション化した**公開ショーケース版**です。位置づけは商用プロダクトではなく PoC / Technical Demonstration であり、プロンプトテンプレートや品質制御の詳細は意図的に簡略化しています。
+Lyriaによる音楽生成パイプラインを、Cloud RunとCloud TasksでWebアプリケーション化した**PoC**（Technical Demonstration）です。商用プロダクトではないため、プロンプトテンプレートや品質制御の詳細は意図的に簡略化しています。非同期化の骨格がそのまま読めることを優先した構成です。
 
 * **非同期ワークフロー**: ユーザー入力からの楽曲設計図（MusicRecipe JSON）作成 → 音声生成 → GCSへのMP3 / Recipe JSON保存 → 署名付きURL発行 → Slack通知までを、Cloud Tasks経由の非同期ジョブとして実行。生成音声はLyria APIの既定出力に合わせてMP3で保存します。
 * **アーキテクチャ**: Hexagonal Architectureに基づき、AI API連携をアプリケーション境界の外側へ閉じ込めた責務分離。認証・セッション・CSRF・OIDCはアプリ側に実装を持たず、すべて`gcp-kit`の`auth`をそのまま利用しています。
