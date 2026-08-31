@@ -17,6 +17,8 @@ public-docs/
 | Path | Description |
 | --- | --- |
 | [docs/documentation-guideline.md](docs/documentation-guideline.md) | このリポジトリに置くドキュメントの書き方（構成、決定の残し方、公開前チェック） |
+| [docs/libraries.md](docs/libraries.md) | 公開 Go ライブラリ 17 本のリファレンス（担当範囲と、その境界をそう決めた理由） |
+| [docs/applications.md](docs/applications.md) | アプリケーション 3 本と MCP サーバー 2 本のリファレンス |
 
 ## Update Workflow
 
