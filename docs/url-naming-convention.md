@@ -272,4 +272,4 @@ grep -rln 'StatusAccepted' internal/server/handlers | xargs grep -L 'Location'
   同日、Google AIP / Microsoft / Zalando のガイドと比較し、非同期応答（`Location`）、
   ページング、エラー応答、バージョニングと Problem Details を採らない理由を追記。
   あわせて、多数派だった `/jobs` と `/history` の 2 根を `/jobs` 一本に、
-  `POST /compose` を `POST /jobs` に改めた。初版時点でこの 2 点に従うアプリは無い。
+  `POST /compose` を `POST /jobs` に改めた。同日、公開アプリ 1 本を先にこの形へ寄せた（旧パスは残置）。
