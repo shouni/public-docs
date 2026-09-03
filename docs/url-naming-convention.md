@@ -52,15 +52,15 @@ URL はそれとは別枠です。理由は 2 つ。
 | 目的 | メソッドとパス | 備考 |
 |---|---|---|
 | トップ（投入フォーム） | `GET /` | |
-| 投入フォーム | `GET /compose` | JSON の対応物が無い画面（2.7） |
-| 投入 | `POST /jobs` | 種別（台本だけ、など）はボディの `stage` で指定。応答は 2.3 |
-| ジョブ一覧（履歴） | `GET /jobs` | 既定は完了したもの。`?state=` で絞る。ページングは 2.5 |
-| ジョブ詳細 | `GET /jobs/{jobID}` | 進捗（`state` / `terminal` / `error`）を常に含み、完了後は成果物へのリンクも含む |
+| 投入フォーム | `GET /compose`、`GET /compose/<種別>` | JSON の対応物が無い画面（2.7）。レシピ編集やジャケットのように入力が別物のフォームは `/compose/recipe`、`/compose/image` のように下に切る |
+| 投入 | `POST /jobs` | 種別はボディの `command`（`compose_recipe`、`generate_design_sheet` など。空は既定の種別）。フォームも JSON も同じ。応答は 2.3 |
+| ジョブ一覧（履歴） | `GET /jobs` | 既定は完了したもの。`?state=` で絞る。同じ記録で `command` だけ違う種別（曲・下書き・ジャケットなど）は `?kind=` で絞る。ページングは 2.5 |
+| ジョブ詳細 | `GET /jobs/{jobID}` | 進捗（`state` / `terminal` / `error`）を常に含み、完了後は成果物も同じ 1 文書に載せる。載せ方は 2.3 |
 | ジョブ削除 | `DELETE /jobs/{jobID}` | `POST …/delete` は使わない |
 | 成果物の取得 | `GET /jobs/{jobID}/<成果物>` | `/audio`、`/video`、`/script`、`/recipe` など。未完了なら `409` |
 | 成果物の編集 | `PUT /jobs/{jobID}/<成果物>` | 全置換なので `PUT`。部分更新は作らない |
 | ジョブへのアクション | `POST /jobs/{jobID}/<動詞>` | 動詞は 2.4。応答は 2.3 |
-| 子要素 | `/jobs/{jobID}/<複数形>/{index}` | 例: `/cuts/{cutIndex}/keyframe`。条件は下記 |
+| 子要素 | `/jobs/{jobID}/<複数形>/{index}` | 例: `/cuts/{cutIndex}/keyframe`。子要素へのアクションも同じ形で `/cuts/{cutIndex}/regenerate-keyframe`。条件は下記 |
 | 選択肢の一覧 | `GET /modes`、`GET /speakers` | 複数形の名詞 |
 | 選択肢の詳細 | `GET /modes/{mode}` | クエリではなくパスで指定 |
 | ワーカーの受け口 | `POST /tasks/<動詞>` | 値は `internal/domain/routes.go` の定数 1 箇所で持つ |
@@ -89,8 +89,20 @@ ID を発番する仕組みも要らないので、条件つきで添字を許�
 | ポーリング先 | `GET /jobs/{jobID}`。`terminal` が真になるまで（失敗も terminal）。完了後も同じ URL がそのまま詳細になる |
 
 `Location` は主流のガイド（Google AIP-151、MS の long-running operation）が求めるもので、
-初版時点では未実装です。既存アプリは `job_id` をボディで返しており、
-ルートを触る機会に `Location` を足します（4 章）。
+5 アプリとも投入とアクションの `202` に付けています（2026-09-04）。
+
+**完了後の 1 文書。** `GET /jobs/{jobID}` の JSON は、進捗の項目をトップレベルに平らに置き、
+成果物をそこに足した 1 つの文書です。成果物の載せ方は 2 通りで、どちらにするかは
+JSON のキーが衝突するかで決まります。
+
+| 載せ方 | 条件 | 例 |
+|---|---|---|
+| 平らに足す | 成果物のキーが進捗のキー（`job_id` / `state` / `title` など）と重ならない | 曲の `recipe` / `assessment` / `audio_url`、レビューの `report_url` |
+| 1 つのキーの下に入れ子 | 成果物が `job_id` や `title` を自分でも持つ | `detail`（動画の履歴詳細）、`comic`（漫画の state）、`image`（ジャケット） |
+
+平らに足せないものを埋め込むと、Go の `encoding/json` は同名のキーを両方とも落とします。
+本文に載せるのは数 KB までで、それより大きい成果物（レポート全文など）はリンク（`report_url`）で
+指し、`GET /jobs/{jobID}/<成果物>` から取ります。
 
 ### 2.4 アクションの動詞
 
@@ -101,17 +113,25 @@ ID を発番する仕組みも要らないので、条件つきで添字を許�
 | `regenerate` | 同じ入力で作り直す |
 | `regenerate-<対象>` | 一部だけ作り直す（`regenerate-keyframe`、`regenerate-zip`） |
 | `generate-<対象>` | 既存の成果物から次の段階を作る（`generate-video`） |
+| `generate` | 起点（下書きや公開済みの曲）のレシピから、同じ種類の成果物を新しいジョブで作る |
+| `synthesize` | 保存済みの台本から音声を作る（台本を作らない） |
 | `finalize` | 分割して作った成果物を 1 本にまとめる |
-| `preview` | 副作用なく結果を見る。`POST …/<対象>/preview` の形 |
+| `preview` | 副作用なく結果を見る。`POST …/<対象または動詞>/preview` の形（`/reading/preview`、`/post-youtube-comment/preview`） |
+
+| `apply-<対象>` | 保存済みの素材に後から当てる（`apply-title`） |
+| `post-<対象>` | 外部へ投稿する（`post-youtube-comment`）。取り消せないので `…/preview` を必ず持つ |
 
 新しい動詞を足すときは、既存の動詞で表せないことを確認してから足します。
+アクション名は動詞で始めます。名詞だけ（`cover-art`、`title`、`youtube`）は「作る」のか「当てる」のか
+「投稿する」のか読み手が補うことになるので使いません。`POST` で作られる副リソース（`POST /jobs`）とは
+別で、ジョブ配下の `POST` はすべてアクションです。
 
 ### 2.5 一覧のページングとフィルタ
 
 | 項目 | 決定 |
 |---|---|
 | ページ指定 | `?page=N`（1 始まり）と `?per_page=N`。範囲外は 1 ページ目に丸める |
-| フィルタ | `?<snake_case>=値`。ジョブの状態は `state`（`running` / `done` / `failed`）、工程は `stage` |
+| フィルタ | `?<snake_case>=値`。ジョブの状態は `state`（`running` / `done` / `failed`）、工程は `stage`、種別は `kind` |
 | JSON の形 | `items`、`page`、`per_page`、`total`、`has_next` |
 
 カーソル方式は採りません。一覧の裏がオブジェクトストレージか Firestore の
@@ -189,7 +209,7 @@ JSON 専用のパスを別に切るのは、次のときだけです。
 ### 3.4 `POST /compose` で作成する
 
 ```text
-採用: POST /jobs。種別はボディの stage
+採用: POST /jobs。種別はボディの command
 理由: 初版時点の既存アプリは POST /compose と POST /compose-<種別> で
       投入していた。3.3 で /jobs を主リソースにしたので、作成も同じ根に置く。
       /compose-draft のような種別ごとのパスは、種別が増えるたびに
@@ -224,7 +244,17 @@ JSON 専用のパスを別に切るのは、次のときだけです。
       （リトライ可否の判定など）。そのときは status と type を足す
 ```
 
-### 3.7 フレームワークの導入
+### 3.7 `/modes/{mode}` でモードの詳細を指す（ap-music）
+
+```text
+採用: GET /modes/detail?kind=&key= のまま（規約 2.2 からの例外）
+理由: モードキーが "en/edm_pop" のようにスラッシュを含み、chi のパスパラメータには
+      入らない。%2F にすると CleanPath の正規化と噛み合わない。
+      kind（lyrics / compose / coverart）も要るので、パスにすると 2 段になる。
+再検討の条件: キーからスラッシュを外す（言語を別の軸にする）とき
+```
+
+### 3.8 フレームワークの導入
 
 ```text
 採用: chi のまま
@@ -236,33 +266,27 @@ JSON 専用のパスを別に切るのは、次のときだけです。
 
 ---
 
-## 4. 既存アプリの寄せ方
+## 4. 規約から外れたルートの見つけ方
 
-一度に全部を書き換えません。ルートを触る機会に、そのアプリだけ寄せます。
-
-1. **新旧を両方登録する。** 同じハンドラを新パスと旧パスの両方に登録する。
-   `/history/*` を `/jobs/*` に移すような木ごとの移行は、`/jobs/{jobID}` 配下を
-   `func(r chi.Router)` に切り出して `r.Route` で 2 箇所に掛ける。
-   コメントで旧パスであることと、消す条件を書く。
-2. **MCP サーバーを新パスに切り替える。** クライアント側のパスは文字列リテラルなので
-   grep で見つかる。
-3. **旧パスを消す。** MCP サーバーのデプロイが済んでから。
-
-規約から外れているルートは、各アプリのルート登録を grep して見つけます。
+5 アプリと MCP サーバーは 2026-09-04 に寄せ終えており、旧パスは残していません。
+以後はルートを足すたびに、次の grep でゼロ件であることを確かめます。
 
 ```bash
 # snake_case のパス
 grep -rn 'r\.\(Get\|Post\|Put\|Delete\)("[^"]*_' internal/server/router.go
-# /api/ 接頭辞
-grep -rn '"/api' internal/server/router.go
-# 2 根（/history）と /compose 投入が残っている箇所
-grep -rn '"/history\|"/compose' internal/server/router.go
+# /api/ 接頭辞、/history の 2 根、/compose への投入
+grep -rn '"/api\|"/history\|r\.Post("/compose' internal/server/router.go
 # 202 を返しているのに Location を付けていない箇所
 grep -rln 'StatusAccepted' internal/server/handlers | xargs grep -L 'Location'
 ```
 
-同じ動詞を 2 つの名前で登録している（エイリアスが残っている）ものは、
-上の手順 3 が終わっていないものとして扱います。
+MCP サーバー側は、各ツールの説明に書いた `endpoints` が相手の `router.go` に実在するかを
+テストが確かめます（5 リポジトリを隣に checkout した環境でだけ走ります）。ルートを
+動かしたら、そのテストが先に落ちます。
+
+大きく動かすときの手順は初版のときと同じです。新旧を両方登録し（`/jobs/{jobID}` 配下を
+`func(r chi.Router)` に切り出して `r.Route` で 2 箇所に掛ける）、MCP サーバーを切り替え、
+デプロイ後に旧を消します。利用者が本人だけの間は、両登録を飛ばして同時デプロイでも構いません。
 
 ---
 
@@ -273,3 +297,9 @@ grep -rln 'StatusAccepted' internal/server/handlers | xargs grep -L 'Location'
   ページング、エラー応答、バージョニングと Problem Details を採らない理由を追記。
   あわせて、多数派だった `/jobs` と `/history` の 2 根を `/jobs` 一本に、
   `POST /compose` を `POST /jobs` に改めた。同日、公開アプリ 1 本を先にこの形へ寄せた（旧パスは残置）。
+- 2026-09-04: 5 アプリと MCP サーバーの移行完了。実装で決めたことを反映:
+  種別はボディの `command`（`stage` から改称）、一覧の `?kind=`、フォームの派生 `/compose/<種別>`、
+  `GET /jobs/{jobID}` の 1 文書（平らに足すか入れ子にするかの条件）、動詞 `generate` / `synthesize`、
+  `Location` を実装済みに、例外（3.7 `/modes/detail`）と動詞 `apply-` / `post-` を追記。名詞だけの
+  アクション名 3 本（`cover-art` / `title` / `youtube`）は同日に改名したので規約には残さない。
+  旧パスは全部消したので、4 章を「寄せ方」から「見つけ方」に改めた。
