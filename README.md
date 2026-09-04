@@ -20,6 +20,7 @@ public-docs/
 | [docs/libraries.md](docs/libraries.md) | 公開 Go ライブラリ 18 本のリファレンス（担当範囲と、その境界をそう決めた理由） |
 | [docs/applications.md](docs/applications.md) | アプリケーション 3 本と MCP サーバー 2 本のリファレンス |
 | [docs/url-naming-convention.md](docs/url-naming-convention.md) | Web アプリケーションの URL 命名規約（リソースの骨格、採らなかった案、既存アプリの寄せ方） |
+| [docs/worker-convention.md](docs/worker-convention.md) | Cloud Tasks ワーカーの規約（ジョブの一生の順序、ペイロード、タスク名、採らなかった案） |
 
 ## Update Workflow
 
