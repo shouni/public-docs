@@ -99,7 +99,7 @@ prefix 走査で足りる規模のアプリだけ）。
 | コマンド → 工程 | `planner.go` の `Planner.Plan(task) ([]Step, error)` だけが対応を持つ。1 コマンド 1 工程のアプリでも同じ形にする。`Runner.run` は返った列を順に実行するだけで、`command` で分岐しない。本体がライブラリ呼び出し 1 つで工程に分かれないアプリ（adk-review）は `Step` も `planner.go` も持たず、`Run` から直接呼ぶ |
 | 状態の記録 | `job_status.go`（`begin` / `markSucceeded` / `markFailed`） |
 | 通知 | `notify.go` |
-| 型名 | 入口は `Runner`、工程は `XxxStep`。`XxxPipeline` / `XxxFilter` / `XxxWorkflow` のように呼び名を変えない。パッケージ名がアプリ名を言っているので、型名にアプリ名を重ねない |
+| 型名 | アプリ名を重ねない（`AdkReviewRunner` のようにしない）。パッケージ名（`internal/pipeline`）が既にアプリを言っている |
 
 工程の呼び名（Filter / Workflow / Step）は作った年代で違っていましたが、揃えました。
 接頭辞で種類が分かれば読めるという案もありましたが、grep が 3 通りになり、新しいアプリを
