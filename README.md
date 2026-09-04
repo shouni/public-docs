@@ -1,46 +1,49 @@
 # public-docs
 
-公開・共有用ドキュメントを管理するためのリポジトリです。
+公開・共有してよいドキュメントの置き場です。
 
-設計資料、技術メモ、外部共有向けの PDF など、プロジェクトや技術思想を説明するドキュメントをここに集約します。
-
-## Contents
-
-```text
-public-docs/
-├── README.md
-└── docs/
-```
+いまあるのは、個人開発のエコシステム（Go の公開ライブラリ群と、それを統合した Cloud Run 上の
+アプリケーション）についての**リファレンス**と、複数のリポジトリが揃えるべき**規約**です。
 
 ## Documents
 
+### リファレンス
+
 | Path | Description |
 | --- | --- |
-| [docs/documentation-guideline.md](docs/documentation-guideline.md) | このリポジトリに置くドキュメントの書き方（構成、決定の残し方、公開前チェック） |
-| [docs/libraries.md](docs/libraries.md) | 公開 Go ライブラリ 19 本のリファレンス（担当範囲と、その境界をそう決めた理由） |
+| [docs/libraries.md](docs/libraries.md) | 公開 Go ライブラリ 19 本の境界の地図（担当範囲、隣との線引き、層の位置） |
 | [docs/applications.md](docs/applications.md) | アプリケーション 4 本と MCP サーバー 2 本のリファレンス |
+
+### 規約
+
+| Path | Description |
+| --- | --- |
 | [docs/url-naming-convention.md](docs/url-naming-convention.md) | Web アプリケーションの URL 命名規約（リソースの骨格、採らなかった案、既存アプリの寄せ方） |
 | [docs/worker-convention.md](docs/worker-convention.md) | Cloud Tasks ワーカーの規約（ジョブの一生の順序、ペイロード、タスク名、採らなかった案） |
 | [docs/app-readme-convention.md](docs/app-readme-convention.md) | アプリ README の規約（README と CLAUDE.md の役割分担、固定の骨格、書かないもの） |
 | [docs/library-readme-convention.md](docs/library-readme-convention.md) | ライブラリ README の規約（godoc / README / CLAUDE.md の三分割、見出しの語彙、書かないもの） |
 
-## Update Workflow
+### 書き方
 
-1. `docs/` 配下に公開・共有したいドキュメントを配置する
-2. 必要に応じて、この README の `Documents` を更新する
-3. Git で変更履歴を残す
+| Path | Description |
+| --- | --- |
+| [docs/documentation-guideline.md](docs/documentation-guideline.md) | このリポジトリに置くドキュメントの書き方（構成、決定の残し方、公開前チェック） |
+
+## 置くもの・置かないもの
+
+**迷ったら「複数のリポジトリから引かれるか」で決めます。** 1 つのリポジトリでしか使わない説明は、
+そこに置いたほうがコードと一緒に直せるぶん腐りません。使い方は各リポジトリの README、API は
+godoc（pkg.go.dev）、内部の設計判断は各リポジトリの CLAUDE.md が持ちます。
+
+**公開リポジトリです。** 非公開のリポジトリ名、認証情報、個人情報は置きません。書き方の決まりと
+公開前のチェックリストは [documentation-guideline.md](docs/documentation-guideline.md) が持ちます。
+
+新しい文書を足したら、上の表にも 1 行足してください。表と実ファイルが一致しているかは
+次で確かめられます。
 
 ```bash
-git status
-git add README.md docs/
-git commit -m "Update public docs"
+diff <(grep -o 'docs/[a-z-]*\.md' README.md | sort -u) <(ls -1 docs/ | sed 's|^|docs/|' | sort)
 ```
-
-## Repository Policy
-
-- 公開前提の資料のみを配置する
-- 機密情報、認証情報、個人情報を含めない
-- 差し替え時はファイル名または README の説明で変更内容が追えるようにする
 
 ## License
 
