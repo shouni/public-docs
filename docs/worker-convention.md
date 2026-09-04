@@ -162,8 +162,8 @@ grep -rn 'recover()\|WithoutCancel' internal/pipeline --include='*.go' | grep -v
 grep -rn 'type \w*\(Filter\|Workflow\)\b' internal/pipeline --include='*.go' | grep -v _test
 # コマンド → 工程の対応が planner.go 以外にある（Runner.run の switch が疑わしい）
 grep -rn 'switch .*Command' internal/pipeline/pipeline.go
-# 投入より先に queued を書いているか（Enqueue の直前に Save があること）
-grep -rn -B6 '\.Enqueue(ctx' internal/server/handlers --include='*.go' | grep -c 'Save\|recordQueued'
+# 投入と queued の記録の順序（記録の行番号が Enqueue より小さいこと。読んで判断する）
+grep -rn 'Enqueue(\|ecordQueued' internal/server/handlers --include='*.go' | grep -v _test
 ```
 
 ---
