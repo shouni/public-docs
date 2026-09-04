@@ -5,8 +5,8 @@ Cloud Run 上で web / worker として動くアプリケーションの README 
 読み終えると「README に何を書き、何を CLAUDE.md へ送り、何を書かないか」を機械的に決められ、
 既存の README のどこが規約から外れているかを自分で判定できます。
 
-ライブラリの README は対象外です（そちらは「シグネチャは godoc、理由は CLAUDE.md、README は
-知らないと高くつくことだけ」という各リポジトリの CLAUDE.md の規則が持ちます）。
+ライブラリの README は [library-readme-convention.md](library-readme-convention.md) が持ちます。
+骨格を固定しないなど、意図的に別の規約です（理由はそちらの §3.1）。
 
 ---
 

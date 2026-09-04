@@ -21,7 +21,8 @@ public-docs/
 | [docs/applications.md](docs/applications.md) | アプリケーション 4 本と MCP サーバー 2 本のリファレンス |
 | [docs/url-naming-convention.md](docs/url-naming-convention.md) | Web アプリケーションの URL 命名規約（リソースの骨格、採らなかった案、既存アプリの寄せ方） |
 | [docs/worker-convention.md](docs/worker-convention.md) | Cloud Tasks ワーカーの規約（ジョブの一生の順序、ペイロード、タスク名、採らなかった案） |
-| [docs/readme-convention.md](docs/readme-convention.md) | アプリ README の規約（README と CLAUDE.md の役割分担、固定の骨格、書かないもの） |
+| [docs/app-readme-convention.md](docs/app-readme-convention.md) | アプリ README の規約（README と CLAUDE.md の役割分担、固定の骨格、書かないもの） |
+| [docs/library-readme-convention.md](docs/library-readme-convention.md) | ライブラリ README の規約（godoc / README / CLAUDE.md の三分割、見出しの語彙、書かないもの） |
 
 ## Update Workflow
 
