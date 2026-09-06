@@ -228,58 +228,29 @@ AI へのプロンプト管理と、レスポンスのドキュメント化（Ma
 
 ---
 
-### go-gemini-client
-
-Google Gemini API / Vertex AI 向けのデュアルバックエンド対応クライアントです。API Key 方式
-（Google AI Studio）と Project ID / Location ID 方式（Vertex AI）を 1 つのクライアントで切り替えられます。
-Vertex AI だけで足りる系統は `genai-kit` が担当しており、使い分けは次項の表にあります。
-
-* **SDK の乗り換えで書き換わる範囲を、このモジュールに閉じる**: 上位が依存するのは `Generator` の
-  1 メソッドだけです。ただし一部の型は `genai` の**型エイリアス**なので、効果は「別の SDK へただちに
-  差し替わる」ことではなく、**手を入れる場所が上位の 5 リポジトリではなくこの 1 つに集まる**ことです。
-* **`MusicRecipe` はエコシステムの共通通貨**: `lyria` パッケージが作る楽曲設計図を、
-  **動画側のオーケストレーターも同じ形で入力に取ります**。
-
-[GitHub - shouni/go-gemini-client](https://github.com/shouni/go-gemini-client)
-
----
-
 ### genai-kit
 
-Vertex AI 専用のクライアントです。`gemini` / `lyria` / `veo` / `callguard` は `go-gemini-client` と
-同じ構えで、加えて参照画像付きの画像生成 `imagegen` を持ちます。
+**この層で `google.golang.org/genai` を import する唯一のモジュール**です。テキスト生成（`gemini`）、
+歌詞→レシピ→音声の音楽生成（`lyria`）、動画生成の投函と完了待ち（`veo`）、参照画像付きの画像生成
+（`imagegen`）、呼び出しガード（`callguard`）、楽曲構成の共通語彙（`music`）を持ちます。
 
-APIキー方式を落とした分、参照画像の扱いが変わります。使い分けはここだけを見れば決まります。
-
-| | go-gemini-client | genai-kit |
-| --- | --- | --- |
-| バックエンド | Gemini API（APIキー）と Vertex AI | **Vertex AI のみ** |
-| 参照画像 | File API へ上げてキャッシュする経路を持つ | **`gs://` をモデル側に解決させる**（転送が起きない） |
-| 画像生成 | `gemini-image-kit` へ委譲 | `imagegen` を内蔵 |
-
-* **`gs://` 以外を受け付けない**: Vertex AI はモデル側で `gs://` を解決するので、取得もアップロードも
-  バイト列の転送も発生しません。**HTTP からの取得・サイズ上限・再圧縮・アップロードのキャッシュが要る
-  構成は `gemini-image-kit` の担当**で、こちらには経路そのものがありません。
-* **流量制御は持たない**: クォータはプロジェクト単位なので、`callguard` のガードをテキスト生成と
-  共有する形で上位に置きます。ライブラリごとに独立したレート制限を持たせると、合計がクォータを超えます。
+* **バックエンドは Vertex AI**: 認証は Application Default Credentials に委ね、呼び出し側は
+  どちらのバックエンドかを意識しません。例外は `Config.APIKey` で、最新の Lyria が Vertex AI で
+  提供されていないため音楽生成だけが APIキー経路を必要とします。**Vertex AI で使えるようになった
+  時点で削除する暫定措置**です。
+* **参照画像の取得はこのライブラリの仕事ではない**: `gs://` は Vertex AI がモデル側で解決するため
+  転送が起きません。http(s) の参照が要る場合、取得の経路・タイムアウト・サイズ上限を呼び出し側が
+  決め、バイト列を `imagegen.Request.References` へ渡します。取得方法の選択肢をライブラリが
+  抽象化して抱えると、使わない依存（HTTP クライアント、キャッシュ、再圧縮）まで全員に配ることに
+  なるためです。
+* **`MusicRecipe` はエコシステムの共通通貨**: `music` パッケージが持つ楽曲設計図を、
+  **動画側のオーケストレーターも同じ形で入力に取ります**。依存を持たない葉パッケージなので、
+  レシピを読み書きするだけの下流はワークフロー本体を輸入せずに済みます。
+* **流量制御はライブラリに持たせない**: クォータはプロジェクト単位なので、`callguard` のガードを
+  テキスト生成と共有する形で上位に置きます。ライブラリごとに独立したレート制限を持たせると、
+  合計がクォータを超えます。
 
 [GitHub - shouni/genai-kit](https://github.com/shouni/genai-kit)
-
----
-
-### gemini-image-kit
-
-参照画像の**取得・再圧縮・キャッシュまで要る**画像生成を担当します
-（`gs://` だけで足りる構成は `genai-kit` の `imagegen` が担います）。
-
-* **外部 URL の取得経路は注入で決める**: 取得は `ports.Downloader` 経由に限定し、SSRF 対策や
-  ドメイン制御はアプリケーション側で適用します。
-* **流量制御は持たない**: レート制限・並列度・タイムアウトのオプションは撤去しました。クォータは
-  プロジェクト単位なので、テキスト生成と同じ `callguard` のガードで包むのが呼び出し側の仕事です。
-
-参照解決の選び方、MIME 推測、シードの扱いをコードまで降りて追ったのが「[Go言語で構築する堅牢なAI画像生成パイプライン：MIME推測・File APIキャッシュ・SSRF対策](https://zenn.dev/snknsk/articles/b694340e5cf15e)」です。
-
-[GitHub - shouni/gemini-image-kit](https://github.com/shouni/gemini-image-kit)
 
 ---
 
