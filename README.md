@@ -11,8 +11,8 @@
 
 | Path | Description |
 | --- | --- |
-| [docs/libraries.md](docs/libraries.md) | 公開 Go ライブラリ 19 本の境界の地図（担当範囲、隣との線引き、層の位置） |
-| [docs/applications.md](docs/applications.md) | アプリケーション 5 本と MCP サーバー 2 本のリファレンス |
+| [docs/libraries.md](docs/libraries.md) | 公開 Go ライブラリの境界の地図（担当範囲、隣との線引き、層の位置） |
+| [docs/applications.md](docs/applications.md) | アプリケーションと MCP サーバーのリファレンス |
 
 ### 規約
 
