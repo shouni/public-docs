@@ -7,7 +7,7 @@ Cloud Run 上の Web 面が Cloud Tasks へ投入し、worker 面が受け取っ
 既存アプリのどこが規約から外れているかを自分で判定できます。
 
 URL の切り方は [url-naming-convention.md](url-naming-convention.md)、キューと
-タイムアウトのインフラ側の判断は `ap-infra/docs/conventions.md` が持ちます。
+タイムアウトのインフラ側の判断はインフラ構成のリポジトリ（非公開）の規約が持ちます。
 この文書はその間、アプリのコードが持つ部分だけを扱います。
 
 ---
@@ -38,7 +38,7 @@ URL の切り方は [url-naming-convention.md](url-naming-convention.md)、キ�
 Web 面                                 worker 面（gcp-kit/worker.Lifecycle）
 ────────────────────────────────       ──────────────────────────────────────────
 1. ジョブ ID を採番する                  4. Prepare   ログの相関キーを ctx に載せる
-2. queued を記録する（Recorder.Save）    5. Begin     再配信ガード＋running の記録
+2. queued を記録する（Store.Save）       5. Begin     再配信ガード＋running の記録
 3. Cloud Tasks へ投入する                6. Validate  入力の検証（失敗は Permanent）
    → 202 と Location: /jobs/{jobID}      7. Run       本体（Timeout はここだけ）
                                          8. Finish    結末の記録と通知（切り離した ctx）
@@ -144,7 +144,8 @@ prefix 走査で足りる規模のアプリだけ）。
 ```text
 採用: 1（voice-queue だけ 2）
 理由: 再試行は「何が起きたか」を隠す。失敗はその場で記録と通知に残して、人が
-      投げ直す。2 にするなら Permanent の配線が前提で、それは 2.1 の 6 で済ませてある
+      投げ直す。2 にするなら Permanent の配線（2.1 の 6）が前提。規約は全アプリに配線を
+      求めているが、済んでいないアプリもあるので、上げる前に確かめる
 再検討の条件: 一時障害での損失が手作業の投げ直しより高くつくアプリが出たとき
 ```
 

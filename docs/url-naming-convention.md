@@ -117,7 +117,6 @@ JSON のキーが衝突するかで決まります。
 | `synthesize` | 保存済みの台本から音声を作る（台本を作らない） |
 | `finalize` | 分割して作った成果物を 1 本にまとめる |
 | `preview` | 副作用なく結果を見る。`POST …/<対象または動詞>/preview` の形（`/reading/preview`、`/post-youtube-comment/preview`） |
-
 | `apply-<対象>` | 保存済みの素材に後から当てる（`apply-title`） |
 | `post-<対象>` | 外部へ投稿する（`post-youtube-comment`）。取り消せないので `…/preview` を必ず持つ |
 
@@ -130,9 +129,9 @@ JSON のキーが衝突するかで決まります。
 
 | 項目 | 決定 |
 |---|---|
-| ページ指定 | `?page=N`（1 始まり）と `?per_page=N`。範囲外は 1 ページ目に丸める |
-| フィルタ | `?<snake_case>=値`。ジョブの状態は `state`（`running` / `done` / `failed`）、工程は `stage`、種別は `kind` |
-| JSON の形 | `items`、`page`、`per_page`、`total`、`has_next` |
+| ページ指定 | `?page=N`（1 始まり）と `?per_page=N`。1 未満は 1 ページ目、最終ページを超えたら最終ページに丸める（`go-utils/paging.New`） |
+| フィルタ | `?<snake_case>=値`。ジョブの状態は `state`（`queued` / `running` / `succeeded` / `failed`）、工程は `stage`、種別は `kind` |
+| JSON の形 | `items` と、`go-utils/paging.PageMeta`（`page`、`per_page`、`total`、`has_next` など）を同じ階層に並べる |
 
 カーソル方式は採りません。一覧の裏がオブジェクトストレージか Firestore の
 単純な降順で、履歴は 1 利用者あたり数百件の規模だからです。
@@ -200,7 +199,7 @@ JSON 専用のパスを別に切るのは、次のときだけです。
       2 つの URL で指すので、クライアントは「今どちらを叩くべきか」を
       state を見て切り替える必要があり、MCP サーバーがそのぶんの分岐を持っていた。
       主流のガイドはどれも「1 エンティティ 1 リソース」で、履歴は
-      GET /jobs?state=done のようなビューにする。こちらに寄せると
+      GET /jobs?state=succeeded のようなビューにする。こちらに寄せると
       投入直後から削除まで URL が 1 つで、ポーリングが完了後にそのまま詳細になる。
       移行コストは 4 章の手順で払う。
 再検討の条件: なし。2 根に戻す理由は「既存がそうだった」以外に無い
@@ -244,7 +243,7 @@ JSON 専用のパスを別に切るのは、次のときだけです。
       （リトライ可否の判定など）。そのときは status と type を足す
 ```
 
-### 3.7 `/modes/{mode}` でモードの詳細を指す（ap-music）
+### 3.7 `/modes/{mode}` でモードの詳細を指す（楽曲生成サービス）
 
 ```text
 採用: GET /modes/detail?kind=&key= のまま（規約 2.2 からの例外）
@@ -269,7 +268,7 @@ JSON 専用のパスを別に切るのは、次のときだけです。
 ## 4. 規約から外れたルートの見つけ方
 
 5 アプリと MCP サーバーは 2026-09-04 に寄せ終えており、旧パスは残していません。
-以後はルートを足すたびに、次の grep でゼロ件であることを確かめます。
+以後はルートを足すたびに、次の grep で外れが無いことを確かめます。
 
 ```bash
 # snake_case のパス
@@ -277,7 +276,8 @@ grep -rn 'r\.\(Get\|Post\|Put\|Delete\)("[^"]*_' internal/server/router.go
 # /api/ 接頭辞、/history の 2 根、/compose への投入
 grep -rn '"/api\|"/history\|r\.Post("/compose' internal/server/router.go
 # 202 を返しているのに Location を付けていない箇所
-grep -rln 'StatusAccepted' internal/server/handlers | xargs grep -L 'Location'
+# ※ 削除の 202 や、HTML の受付画面を描くだけのハンドラも当たる。投入とアクションの JSON 応答だけを見る
+grep -rln --include='*.go' 'StatusAccepted' internal/server/handlers | grep -v _test | xargs grep -L 'Location'
 ```
 
 MCP サーバー側は、各ツールの説明に書いた `endpoints` が相手の `router.go` に実在するかを
