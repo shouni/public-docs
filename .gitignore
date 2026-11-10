@@ -10,13 +10,13 @@ Thumbs.db
 *.swp
 *~
 
-# Office / LibreOffice の一時ファイル
+# Office / LibreOffice temporary files
 ~$*.doc*
 ~$*.xls*
 ~$*.ppt*
 .~lock.*#
 
-# ドキュメント生成の中間・出力物
+# Intermediate and output files of document generation
 /build/
 /dist/
 /site/
@@ -24,11 +24,11 @@ Thumbs.db
 *.toc
 *.log
 
-# 秘匿情報
+# Secrets
 .env
 .env.*
 *.pem
 *.key
 
-# ツール用（textlint / markdownlint など）
+# Tools (textlint, markdownlint and so on)
 node_modules/

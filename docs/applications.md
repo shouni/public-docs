@@ -1,28 +1,37 @@
-# アプリケーション / MCP サーバーリファレンス
+# Application and MCP Server Reference
 
-[libraries.md](libraries.md) のライブラリ群を統合した、Cloud Run / Cloud Tasks 上で動く成果物アプリケーションと、AI エージェントからの入口となる MCP サーバーの資料です。
+The applications that combine the libraries in [libraries.md](libraries.md) and run on Cloud Run /
+Cloud Tasks, and the MCP servers that are the entry point for AI agents.
 
-各アプリが**どこまでを自分で持ち、どこからライブラリへ委譲しているか**を引くために置いています。
-全体の設計思想と層の関係は「[個人開発エコシステムの全体像](https://zenn.dev/snknsk/articles/shouni-go-ecosystem-overview)」を参照してください。
+It is here to look up **what each app keeps for itself and what it delegates to the libraries**.
+Rules shared by every app are in the conventions ([URL naming](url-naming-convention.md),
+[workers](worker-convention.md)) and are not repeated here. The overall design is in
+"[The whole picture of a personal development ecosystem](https://zenn.dev/snknsk/articles/shouni-go-ecosystem-overview)"
+(Japanese, like every article linked from this page).
 
 ---
 
-## 🚀 アプリケーション (Applications)
-
-コア基盤およびAIライブラリ群を統合し、Cloud Run / Cloud Tasks 上で動作する最終成果物アプリケーションです。
+## 🚀 Applications
 
 ### AP Music Poc
 
-> **アーカイブ済みです。** 設計を示すための PoC なので、特定時点のスナップショットとして
-> 意図的に凍結しました。コードはこれまでどおり閲覧できます。
+> **Archived.** It is a PoC meant to show a design, so it was deliberately frozen as a snapshot.
+> The code can still be read.
 
-Lyriaによる音楽生成パイプラインを、Cloud RunとCloud TasksでWebアプリケーション化した**PoC**（Technical Demonstration）です。商用プロダクトではないため、プロンプトテンプレートや品質制御の詳細は意図的に簡略化しています。非同期化の骨格がそのまま読めることを優先した構成です。
+A **PoC** (technical demonstration) that turns a Lyria music-generation pipeline into a web application
+on Cloud Run and Cloud Tasks. It is not a product, so the prompt templates and quality control are
+deliberately simplified; the priority is that the asynchronous skeleton reads plainly.
 
-* **非同期ワークフロー**: ユーザー入力からの楽曲設計図（MusicRecipe JSON）作成 → 音声生成 → GCSへのMP3 / Recipe JSON保存 → 署名付きURL発行 → Slack通知までを、Cloud Tasks経由の非同期ジョブとして実行。生成音声はLyria APIの既定出力に合わせてMP3で保存します。
-* **アーキテクチャ**: Hexagonal Architectureに基づき、AI API連携をアプリケーション境界の外側へ閉じ込めた責務分離。認証・セッション・CSRF・OIDCはアプリ側に実装を持たず、すべて`gcp-kit`の`auth`をそのまま利用しています。
-* **履歴と再生**: 保護されたUIから、GCS上の生成履歴一覧、詳細表示、署名付きURL経由の音声プレビュー、履歴削除が可能。
+* **Asynchronous workflow**: from user input to a song blueprint (MusicRecipe JSON) → audio
+  generation → MP3 and recipe JSON saved to GCS → signed URL → Slack notification, run as a job through
+  Cloud Tasks. Audio is stored as MP3 to match the Lyria API's default output.
+* **Architecture**: hexagonal, with the AI APIs kept outside the application boundary. Authentication,
+  sessions, CSRF and OIDC have no implementation in the app; they are `gcp-kit`'s `auth` as is.
+* **History and playback**: a protected UI lists the history on GCS, shows details, previews audio
+  through signed URLs and deletes entries.
 
-非同期ワークフローの組み立てとシーケンスは「[AI音楽生成APIをCloud RunとCloud Tasksで非同期オーケストレーションする設計](https://zenn.dev/snknsk/articles/ai-music-orchestrator)」で詳しく書いています。
+How the asynchronous workflow is assembled is in
+"[Orchestrating an AI music generation API asynchronously with Cloud Run and Cloud Tasks](https://zenn.dev/snknsk/articles/ai-music-orchestrator)".
 
 [GitHub - shouni/ap-music-poc](https://github.com/shouni/ap-music-poc)
 
@@ -30,13 +39,34 @@ Lyriaによる音楽生成パイプラインを、Cloud RunとCloud TasksでWeb�
 
 ### AP MV
 
-楽曲生成サービスが書き出した Music Recipe（楽曲構成書 JSON）から、ミュージックビデオを作る Web アプリケーションです。Gemini にカット割りの台本（Video Recipe）を書かせ、カットごとにキーフレーム画像を生成し、Veo でカットの動画を作り、ffmpeg で 1 本に結合します。カット列の構造化と Veo への受け渡しは `go-veo-orchestrator` に委譲し、こちらは**ジョブ管理・非同期実行・履歴・API/MCP公開**に責務を絞っています。
+A web application that makes a music video from the Music Recipe (song-structure JSON) written by the
+music service. Gemini writes the cut-by-cut script (Video Recipe), a keyframe image is generated per cut,
+Veo makes each cut's video, and ffmpeg joins them. Structuring the cuts and handing them to Veo is
+delegated to `go-veo-orchestrator`; this app narrows itself to **job management, asynchronous
+execution, history and the API/MCP surface**.
 
-* **カット 1 本ずつ生成し、続きはワーカー自身が投げ直す**: Cloud Tasks には 1 リクエストの時間上限があり、長尺の MV は 1 回のディスパッチに収まりません。1 カット終えるたびに残りを継続タスクへ入れ直し、`PIPELINE_TIMEOUT` を各回に個別に掛けます。このとき**記録は `running` のまま据え置き、通知も送りません**。`succeeded` にすると、同じジョブ ID を持つ継続タスク自身に再実行ガードが効いてしまうためです。継続タスクの名前は決定的（`<jobID>-cont-cut-<n>`）にしてあり、at-least-once の再配信が鎖を 2 本に分岐させません。
-* **リトライを意図的に切っている**: キューは `max_attempts = 1` です。再試行は systematic なバグを一時的な回復の裏に隠しますし、**再生成したカット 1 本ごとに Veo の請求が増えます**。生成済みのカットは永続化されているので、同じレシピを投げ直せば途中から再開します。パイプラインの検証が済めば `max_attempts` を上げて自動再開にできますが、その前に直しようのない失敗を `worker.Permanent` で返す配線が要ります（[worker-convention.md](worker-convention.md) §2.1 の 6）。
-* **署名付き URL を HTML に埋めない**: 画面は同一オリジンのパスを指し、ハンドラーが毎回 302 で新しい署名へ送ります。埋め込みには 2 つ問題があります——署名付き URL は有効な間アプリの認証の外側で動くこと、そして**詳細ページはカットを見比べて再生成を決める場所なので、開いたままで署名が切れる**こと。あわせて、1 回の詳細表示が前払いしていた IAM SignBlob の往復も消えます（Cloud Run は秘密鍵を持たないため、署名はローカルの計算ではなくネットワーク呼び出しです）。**JSON 表現だけが署名付き URL そのものを返します**。MCP ゲートウェイはリダイレクトを辿らず URL 自体を受け取るためです。
-* **課金された分の台帳を別に持つ**: 完成した映像のメタデータからは「実際に何本焼いたか」が読めません。再配信や個別再生成で焼いたカットはそこに現れないためです。生成が成功した直後——課金が発生した瞬間——に `veo_usage.json` へ本数・秒数・モデルを記録し、**完成物との差を「再生成で捨てた分」として履歴画面に出します**。記録の失敗は警告だけにして生成を続けます。帳簿のために止めると、課金済みのカットを Cloud Tasks に焼き直させることになるためです。
-* **時間の梯子を起動時に検証する**: `PIPELINE_TIMEOUT < TASK_DISPATCH_DEADLINE <= Cloud Run の timeout` を強制し、等号も無制限も拒否します。**アプリが最初に諦める必要があります**。Cloud Tasks に切られるとプロセスは途中で止まり、失敗の記録も Slack 通知も走らず、`max_attempts = 1` なので何も再配信されず、ジョブは永久に `running` のまま残ります。既定値はどちらにも持たせていません。梯子はデプロイ先が決めるもので、アプリ側の既定は同じ数字を 2 か所に置いたうえ、設定漏れを誰も選んでいない値で走らせてしまいます。
+* **One cut per task; the worker enqueues the rest itself**: a Cloud Tasks request has a time limit,
+  and a long MV does not fit in one dispatch. After each cut the remainder goes back in as a
+  continuation task, each with its own `PIPELINE_TIMEOUT`. **The record stays `running` and no
+  notification is sent**: marking it `succeeded` would trip the re-run guard on the continuation tasks,
+  which share the job ID. Continuation tasks have deterministic names (`<jobID>-cont-cut-<n>`), so an
+  at-least-once redelivery cannot fork the chain in two ([task names](worker-convention.md#23-task-names-deduplication)).
+* **Retries are off on purpose** (`max_attempts = 1`, see [the worker convention](worker-convention.md#34-max_attempts-of-2-or-more)):
+  here the extra reason is that **every regenerated cut is billed by Veo again**. Generated cuts are
+  persisted, so resubmitting the same recipe resumes where it stopped.
+* **Signed URLs are not embedded in HTML**: pages point at same-origin paths and the handler 302s to a
+  fresh signature each time. Embedding has two problems: a signed URL works outside the app's
+  authentication while it is valid, and **the detail page is where cuts are compared before deciding
+  what to regenerate, so it stays open until the signatures expire**. It also removes the IAM SignBlob
+  round trips one detail view used to pay up front (Cloud Run holds no private key, so signing is a
+  network call, not a local computation). **Only the JSON representation returns signed URLs
+  themselves**, because the MCP gateway takes the URL rather than following a redirect.
+* **A separate ledger of what was billed**: the finished video's metadata cannot tell how many cuts were
+  actually rendered, because cuts rendered by redeliveries or individual regenerations do not appear
+  there. Right after each successful generation (the moment billing happens) the count, seconds and
+  model go to `veo_usage.json`, and **the difference from the finished work is shown in the history as
+  regeneration waste**. A failed write only warns and generation continues: stopping for bookkeeping
+  would make Cloud Tasks re-render an already billed cut.
 
 [GitHub - shouni/ap-mv](https://github.com/shouni/ap-mv)
 
@@ -44,14 +74,22 @@ Lyriaによる音楽生成パイプラインを、Cloud RunとCloud TasksでWeb�
 
 ### AP Story
 
-原稿（URL / テキスト）から「章立て → ネーム → デザインシート → パネル → ページ」を生成するWebアプリケーションです。生成ロジックは`go-comic-kit`に委譲し、こちらは**ジョブ管理・非同期実行・履歴・API/MCP公開**に責務を絞っています。
+A web application that generates "outline → script → design sheets → panels → pages" from a manuscript
+(URL or text). The generation logic is delegated to `go-comic-kit`; this app narrows itself to **job
+management, asynchronous execution, history and the API/MCP surface**.
 
-* **台本ゲート**: Webフォームは**台本までしか作りません**。押した時点では章立てが未実行でコマ数が分からず、そのまま画像生成に進むと想定の何倍も払う可能性があります。章立てとネームは文字生成で桁違いに安いので、ここで一度止めて人間が確認します。
-* **状態ドキュメント1枚**: `comic_state.json`が唯一の真実源で、履歴一覧も詳細も再生成もこれを読み書きします。パネル画像を`panel_{panelID}.png`という**安定パス**に置くことで、「12コマ中3コマ目だけ描き直す」が成立します。
-* **重複排除の落とし穴を避ける**: Cloud Tasksのtask nameによる重複排除は完了後もしばらく効き続けます。再生成系のコマンドで対象だけを名前にすると、**投げ直しが`ALREADY_EXISTS`として黙って捨てられます**。まとめてよい重複だけに範囲を絞り、それ以外は名前に投入時刻を含めています。
-* **ブラウザとエージェントに同じルート**: OAuthセッションとサービスアカウントのOIDC（M2M）の二系統で認証し、**同じ URL** を叩きます。返るのが画面か JSON かは `Accept` が決めます。ただし入力フォームのように JSON の対応物が無いものは別リソースなので、そこだけは分けたままです。
+* **Script gate**: the web form **stops at the script**. When the button is pressed the outline has not
+  run, so the number of panels is unknown, and going straight to image generation could cost several
+  times what was expected. Outline and script are text generation, orders of magnitude cheaper, so a
+  person checks them there first.
+* **One state document**: `comic_state.json` is the single source of truth; the history list, the detail
+  page and regeneration all read and write it. Panel images live at **stable paths**
+  (`panel_{panelID}.png`), which is what makes "redraw only panel 3 of 12" possible.
+* **Deduplicating only what may be collapsed**: this app hit Cloud Tasks swallowing re-submissions as
+  `ALREADY_EXISTS`; the rule it led to is in [task names](worker-convention.md#23-task-names-deduplication).
 
-台本ゲートを二段に分けた理由と、stateの周りで踏んだ穴は「[コマ数が分かる前に、画像生成を始めない：AI漫画生成オーケストレーターの設計](https://zenn.dev/snknsk/articles/79fa0d1bbb57e1)」に書いています。
+Why the script gate has two stages, and the holes around the state, are in
+"[Don't start image generation before the panel count is known: designing an AI comic orchestrator](https://zenn.dev/snknsk/articles/79fa0d1bbb57e1)".
 
 [GitHub - shouni/ap-story](https://github.com/shouni/ap-story)
 
@@ -59,12 +97,25 @@ Lyriaによる音楽生成パイプラインを、Cloud RunとCloud TasksでWeb�
 
 ### AP Voice
 
-Web記事やGCS上の文書を、話者とスタイルを指定したナレーション音声に変換するWebアプリケーションです。台本の生成はGeminiに、音声合成はVOICEVOXエンジンへ委譲し、こちらは**ジョブ管理・非同期実行・履歴・API/MCP公開**に責務を絞っています。
+A web application that turns web articles or documents on GCS into narration with a chosen speaker and
+style. Script generation is delegated to Gemini and synthesis to a VOICEVOX engine (through
+`go-voicevox`); this app narrows itself to **job management, asynchronous execution, history and the
+API/MCP surface**.
 
-* **台本と音声を別の工程にする**: 台本ができた時点で一度止まり、履歴に並びます。読みや話者を直したくなったとき、**生成をやり直さずに合成だけかけ直せます**。合成は分単位かかるので、直す前提の台本で先に走らせると捨てることになります。AP Storyの台本ゲートと同じ判断ですが、止める理由は費用ではなく手戻りです。
-* **台本はタスクのペイロードに載せない**: 合成タスクが受け取るのはジョブIDだけで、投入側が先に保存し、ワーカーがIDで読み出します。長い台本はCloud Tasksの1MB上限に届きうるためです。利用者が持ち込んだ台本も同じ経路を通るので、読み出しは1本に保たれます。
-* **話者の語彙はアプリが持つ**: 台本には「四国めたん / ノーマル」のような名前を書き、エンジンの数値IDへの解決は`go-voicevox`が引き受けます。AIへ渡す出力スキーマも同じ話者一覧から組み立てるため、**台本に存在しない話者が現れません**。
-* **読みは固定できるものだけ固定する**: 固有名詞や造語は形態素解析に任せると読みが安定しません。`audio`の読み正規化で辞書にあるものを先に確定させ、残りだけを解析器へ回します。
+* **Script and audio are separate steps**: the job stops once the script exists and shows up in the
+  history. To fix a reading or a speaker, **only synthesis is re-run, not generation**. Synthesis takes
+  minutes, so running it on a script that is about to be fixed is wasted. It is the same decision as AP
+  Story's script gate, but the reason to stop is rework, not cost.
+* **The script is not in the task payload**: the synthesis task carries only the job ID
+  ([large inputs](worker-convention.md#22-payload)). Scripts brought in by users take the same path, so
+  there is one way to read a script.
+* **The app owns the speaker vocabulary**: scripts name speakers in words (a character name plus a
+  style such as "normal"), and `go-voicevox` resolves them to the engine's numeric IDs. The output
+  schema given to the AI is built from the same speaker list, so **a speaker that does not exist never
+  appears in a script**.
+* **Readings are pinned where they can be**: proper nouns and coined words are unstable under
+  morphological analysis. Per-spelling reading overrides (`audio`'s reading normalisation, used through
+  `go-voicevox`) settle those first, and only the rest goes to the analyser.
 
 [GitHub - shouni/ap-voice](https://github.com/shouni/ap-voice)
 
@@ -72,41 +123,75 @@ Web記事やGCS上の文書を、話者とスタイルを指定したナレー�
 
 ### ADK Review
 
-Gitの差分を**AIエージェント**にレビューさせるWebアプリケーションです。差分をそのままモデルへ渡して終わりではなく、[ADK for Go](https://github.com/google/adk-go) のエージェントループとして動きます。
+A web application that has an **AI agent** review a Git diff. Rather than handing the diff to a model
+and stopping, it runs as an agent loop on [ADK for Go](https://github.com/google/adk-go).
 
-* **差分の外を自分で調べる**: 読み取り専用のツール3種（ファイル読み・一覧・検索）を持たせ、差分を起点に必要な文脈を自分で集めさせます。別ファイルの設定資料との矛盾や、変更した関数の呼び出し元で起きる破綻など、**差分の中だけでは原理的に拾えない指摘**が対象です。
-* **AI SDKの例外を閉じ込める**: ADKは`genai` SDKを直接要求するため、「SDKは`genai-kit`の内側に閉じる」という原則から外れます。この例外はレビュアー・出力スキーマと、クライアント設定を組み立てる1ファイルに閉じ込め、`go-review-kit`側はADKを一切知らない状態を保っています。
-* **打ち切りは時間ではなく回数で決める**: 調査はツール呼び出し回数の上限で止めます。モデルの思考時間は設計時に見積もれないのに対し、必要な調査回数は仕様として決められるためです。上限の8割を使った時点で「新しい調査は始めず、そこまでの情報でまとめよ」と伝え、**締め切り超過ではなくレビューの完了に倒します**。
-* **作業ディレクトリは外部入力として扱う**: レビュー対象のリポジトリは外部から与えられるため、ツールのパス検査は`filepath.Clean`では足りません。実体パスまで解決し、symlink経由で作業ディレクトリの外へ出られないことを確認しています。
+* **It investigates beyond the diff itself**: it has three read-only tools (read a file, list, search)
+  and gathers the context it needs, starting from the diff. The target is **findings the diff alone
+  cannot surface in principle**: contradictions with configuration elsewhere, breakage at the callers of
+  a changed function.
+* **The AI SDK exception is contained**: ADK requires the `genai` SDK directly, which breaks the rule
+  that the SDK stays inside `genai-kit`. The exception is confined to the reviewer, the output schema and
+  one file that builds the client configuration; `go-review-kit` knows nothing about ADK.
+* **It stops by count, not by time**: the investigation is capped by the number of tool calls. A
+  model's thinking time cannot be estimated at design time, but the number of look-ups needed can be
+  specified. At 80% of the cap it is told "start no new investigation; conclude with what you have",
+  so **it ends in a finished review rather than a deadline overrun**.
+* **The working directory is treated as external input**: the repository under review comes from
+  outside, so `filepath.Clean` is not enough for the tools' path checks. Paths are resolved to their real
+  location, and it is confirmed that no symlink leads outside the working directory.
 
-エージェント化で何が変わったかは「[エージェントは「差分の外」を読む：ADK for Go で AI レビューを作り直した実践](https://zenn.dev/snknsk/articles/adk-go-agent-review-practice)」にまとめています。
+What changed when it became an agent is in
+"[Agents read outside the diff: rebuilding AI review with ADK for Go](https://zenn.dev/snknsk/articles/adk-go-agent-review-practice)".
 
 [GitHub - shouni/adk-review](https://github.com/shouni/adk-review)
 
 ---
 
-## 🔌 MCPサーバー (MCP Servers)
+## 🔌 MCP Servers
 
-AIエージェント（Claude Code等）から、これらのツール群やSaaSを直接操作するための入口です。
+Entry points for AI agents (Claude Code and others) to operate these tools and SaaS directly.
 
-ゲートウェイに集約する構成の狙いと、認証を2段（共有鍵とOIDC）に分ける理由は「[Claude Codeの一言で、3つのCloud RunサービスをMCP連携してAI音楽動画をYouTube公開する](https://zenn.dev/snknsk/articles/claude-code-mcp-content-pipeline)」で扱っています（執筆時点の3サービスを題材にしています）。
+Why the services are gathered behind a gateway, and why authentication has two stages (shared key and
+OIDC), is in
+"[One sentence to Claude Code: linking three Cloud Run services over MCP to publish an AI music video on YouTube](https://zenn.dev/snknsk/articles/claude-code-mcp-content-pipeline)"
+(it covers the three services that existed when it was written).
 
 ### AP MCP
 
-各サービスの機能をMCPツールとして1つのエンドポイントへ集約し、Claude Code から会話だけで呼べるようにするゲートウェイです。現在は**5サービス**（音楽・MV・漫画・音声・レビュー）を束ねています。**現時点では非公開**のプロジェクトのため、設計だけを抜粋します。
+A gateway that gathers each service's features as MCP tools behind one endpoint, so that Claude Code can
+call them in conversation. It fronts **five services** (music, MV, comics, voice and review). **The
+project is private for now**, so only the design is excerpted here.
 
-* **ツールの説明文はGoのリテラルではなくMarkdown資産**: 説明文はモデルが毎リクエスト読む文章で、生成プロンプトと同じく文面を練りながら育てるものです。`{service}/{tool}.md` に置き、front matterがタイトル・annotationsの類型・ポーリング先・呼び出すバックエンドのルートを持ちます。文字列リテラルのままでは、連結後に実際どう届くのかが読めません。
-* **annotationsは推測ではなく宣言で持つ**: 全ツールが `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint` を宣言します。読み取り専用ツールの自動許可といったクライアント側の権限制御が、ツール名からの推測ではなく宣言に基づいて働きます。
-* **confirmゲートはプレビューそのもの**: 取り消せない・公開される操作は`confirm=true`を指定するまで実行されず、何が起きるかのプレビューだけを返します。**プレビュー専用ツールを別に用意しません。** 別ルートを作ると、モデルがどちらを選ぶかでゲートの有無が決まってしまいます。
-* **ゲートが要るかは動詞ではなく取り消しの重さで決める**: `delete_` で始まっても、作り直しが数秒のテキスト生成で済むもの（下書きの削除）はゲートを付けません。逆に公開済みの成果物や、再実行しても同じものが戻らない成果物（非決定的な生成を経たもの）は付けます。
+* **Tool descriptions are Markdown assets, not Go literals**: a description is prose the model reads on
+  every request and is refined like a generation prompt. It lives at `{service}/{tool}.md`, and its
+  front matter holds the title, the annotation class, the status tool to poll and the backend routes the
+  tool calls. As string literals, there was no way to read what actually arrives after concatenation.
+* **Annotations are declared, not inferred**: every tool declares `readOnlyHint` / `destructiveHint` /
+  `idempotentHint` / `openWorldHint`. Client-side permission controls, such as auto-approving read-only
+  tools, then work from declarations rather than guesses from tool names.
+* **The confirm gate is the preview itself**: irreversible or public operations do not run until
+  `confirm=true` is given, and return only a preview of what would happen. **There is no separate
+  preview-only tool**: with a second route, which route the model picks would decide whether the gate
+  applies.
+* **Whether a gate is needed depends on the cost of undoing, not the verb**: a tool starting with
+  `delete_` gets no gate when recreating its target is seconds of text generation (deleting a draft).
+  Published artifacts, and artifacts that re-running would not bring back (anything that went through
+  non-deterministic generation), get one.
 
 ### AP MCP Slack
 
-Slack Incoming WebhookおよびSlack Web APIを使い、メッセージの投稿・更新・削除と各種情報取得を行うMCPサーバーです。MCPクライアントからコマンドとして直接起動される stdio transport なので、別途サーバーを立てる必要がありません。
+An MCP server that posts, updates and deletes messages and reads various information through Slack
+Incoming Webhooks and the Slack Web API. It uses the stdio transport, launched as a command by the MCP
+client, so there is no server to host.
 
-* **認証情報に応じたツール登録**: 環境変数に設定されたトークン／Webhookに対応するツールのみが一覧に現れます。トークンだけの環境では、Webhook系ツールはそもそも登録されません。
-* **既定動作をプレビューにする**: Slackを変更するツールはすべて`confirm`を必須とし、省略時は**Slackに一切触れず**、実際に送信されるpayloadを返します。プレビュー専用ツールを別に用意しない理由はAP MCPと同じです。
+* **Tools are registered according to credentials**: only the tools whose token or webhook is configured
+  appear in the list. In a token-only environment the webhook tool is not registered at all.
+* **Preview is the default**: every tool that changes Slack requires `confirm`; without it, it **does not
+  touch Slack at all** and returns the payload that would be sent. There is no preview-only tool, for
+  the same reason as AP MCP.
 
-confirmゲートを含む「APIラッパーで終わらせない」ためのMCP設計は「[MCPサーバーをAPIラッパーで終わらせない：Slack連携を安全な業務操作にするGo設計](https://zenn.dev/snknsk/articles/mcp-server-is-not-api-wrapper)」で書いています。
+The MCP design that goes "beyond an API wrapper", confirm gate included, is in
+"[Don't stop at an API wrapper: a Go design that makes Slack operations safe from an MCP server](https://zenn.dev/snknsk/articles/mcp-server-is-not-api-wrapper)".
 
 [GitHub - shouni/ap-mcp-slack](https://github.com/shouni/ap-mcp-slack)

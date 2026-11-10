@@ -1,305 +1,309 @@
-# URL 命名規約
+# URL Naming Convention
 
-Cloud Run 上の Web アプリケーション群で、HTTP のパスをどう切るかを決める文書です。
-想定する読み手は、新しいアプリを起こす人と、既存アプリのルートを増やす人。
-読み終えると「このリソースのパスは何か」を規約から機械的に決められ、
-既存アプリのどこが規約から外れているかを自分で判定できます。
+Decides how HTTP paths are cut in the web applications on Cloud Run.
+It is for people starting a new app and people adding routes to an existing one.
+After reading it you can derive "what is the path for this resource" from the convention mechanically,
+and judge for yourself where an existing app departs from it.
 
-各アプリは [chi](https://github.com/go-chi/chi) の上に `net/http` 互換のハンドラで書かれています。
-命名がばらついたのはルータの表現力が足りなかったからではなく、規約が文書化されていなかったからです。
-この規約はルータやフレームワークを変えずに適用できます。
+Every app is written with `net/http`-compatible handlers on [chi](https://github.com/go-chi/chi).
+Naming drifted not because the router lacked expressiveness but because the convention was never
+written down, so it applies without changing the router or adopting a framework.
 
-規約は既存 5 アプリの多数派を起点に、Google の API 設計ガイド（AIP）、
-Microsoft REST API Guidelines、Zalando RESTful API Guidelines と突き合わせて決めました。
-主流と違う判断は 3 章に、違う理由と再検討の条件つきで残しています。
-
----
-
-## 1. なぜ揃えるのか
-
-アプリ間で pipeline の設計様式が違うことは、年代差として許容しています。
-URL はそれとは別枠です。理由は 2 つ。
-
-- **外部契約である。** MCP サーバーがこれらのパスを文字列リテラルで持ち、
-  サービスごとの違いをクライアント側で吸収しています。パスがばらけるほど、
-  その吸収コードが増え、片方だけ変えたときの 404 が増えます。
-- **ブラウザとエージェントが同じ URL を叩く。** OAuth セッション（人）と
-  OIDC（M2M）の二系統が同じルートに入り、返す形式は `Accept` で切り替えます。
-  パスが「人向け」「機械向け」で分かれていると、この一本化が壊れます。
+The convention started from what most of the five existing apps already did, checked against Google's
+API design guide (AIP), the Microsoft REST API Guidelines and the Zalando RESTful API Guidelines.
+Decisions that differ from the mainstream are in section 3, with the reason and the condition for
+revisiting them.
 
 ---
 
-## 2. 規約
+## 1. Why align them
 
-### 2.1 表記
+Apps are allowed to differ in pipeline style, as a difference of age. URLs are a separate matter, for
+two reasons.
 
-| 項目 | 決定 |
+- **They are an external contract.** The MCP server holds these paths as string literals and absorbs
+  per-service differences on its side. The more the paths diverge, the more absorbing code there is, and
+  the more 404s appear when only one side changes.
+- **Browsers and agents call the same URLs.** OAuth sessions (people) and OIDC (M2M) enter the same
+  routes, and the representation is switched by `Accept`. Splitting paths into "for people" and "for
+  machines" would break that.
+
+---
+
+## 2. Convention
+
+### 2.1 Spelling
+
+| Item | Decision |
 |---|---|
-| パスの単語区切り | kebab-case（`/design-sheets`、`/regenerate-keyframe`） |
-| クエリキー・JSON キー | snake_case（`per_page`、`job_id`）。パスと違う区切りなのは、JSON のキーと同じ綴りでクエリに渡せるようにするため |
-| 大文字 | 使わない |
-| 末尾スラッシュ | 付けない（chi の `r.Route` 内の `"/"` は例外） |
-| パスパラメータ | `{jobID}` のように camelCase。同じ意味の値は全アプリで同じ名前にする |
-| 接頭辞 `/api/` | **付けない**（理由は 3.1） |
-| 接頭辞 `/v1/` | **付けない**（理由は 3.5） |
+| Word separator in paths | kebab-case (`/design-sheets`, `/regenerate-keyframe`) |
+| Query keys and JSON keys | snake_case (`per_page`, `job_id`). Different from paths so that a JSON key can be passed as a query key with the same spelling |
+| Upper case | Never |
+| Trailing slash | Never (except `"/"` inside chi's `r.Route`) |
+| Path parameters | camelCase, as in `{jobID}`. The same value has the same name in every app |
+| `/api/` prefix | **None** (see 3.1) |
+| `/v1/` prefix | **None** (see 3.5) |
 
-### 2.2 リソースの骨格
+### 2.2 The resource skeleton
 
-ジョブが唯一の主リソースです。投入した瞬間から削除するまで、実行中でも完了後でも
-同じ `/jobs/{jobID}` で指します。「履歴」は完了したジョブの一覧ビューであって、
-別のリソースではありません。
+The job is the only primary resource. From the moment it is submitted until it is deleted, running or
+finished, it is addressed by the same `/jobs/{jobID}`. "History" is a list view of finished jobs, not a
+separate resource.
 
-| 目的 | メソッドとパス | 備考 |
+| Purpose | Method and path | Notes |
 |---|---|---|
-| トップ（投入フォーム） | `GET /` | |
-| 投入フォーム | `GET /compose`、`GET /compose/<種別>` | JSON の対応物が無い画面（2.7）。レシピ編集やジャケットのように入力が別物のフォームは `/compose/recipe`、`/compose/image` のように下に切る |
-| 投入 | `POST /jobs` | 種別はボディの `command`（`compose_recipe`、`generate_design_sheet` など。空は既定の種別）。フォームも JSON も同じ。応答は 2.3 |
-| ジョブ一覧（履歴） | `GET /jobs` | 既定は完了したもの。`?state=` で絞る。同じ記録で `command` だけ違う種別（曲・下書き・ジャケットなど）は `?kind=` で絞る。ページングは 2.5 |
-| ジョブ詳細 | `GET /jobs/{jobID}` | 進捗（`state` / `terminal` / `error`）を常に含み、完了後は成果物も同じ 1 文書に載せる。載せ方は 2.3 |
-| ジョブ削除 | `DELETE /jobs/{jobID}` | `POST …/delete` は使わない |
-| 成果物の取得 | `GET /jobs/{jobID}/<成果物>` | `/audio`、`/video`、`/script`、`/recipe` など。未完了なら `409` |
-| 成果物の編集 | `PUT /jobs/{jobID}/<成果物>` | 全置換なので `PUT`。部分更新は作らない |
-| ジョブへのアクション | `POST /jobs/{jobID}/<動詞>` | 動詞は 2.4。応答は 2.3 |
-| 子要素 | `/jobs/{jobID}/<複数形>/{index}` | 例: `/cuts/{cutIndex}/keyframe`。子要素へのアクションも同じ形で `/cuts/{cutIndex}/regenerate-keyframe`。条件は下記 |
-| 選択肢の一覧 | `GET /modes`、`GET /speakers` | 複数形の名詞 |
-| 選択肢の詳細 | `GET /modes/{mode}` | クエリではなくパスで指定 |
-| ワーカーの受け口 | `POST /tasks/<動詞>` | 値は `internal/domain/routes.go` の定数 1 箇所で持つ |
-| ヘルスチェック | `gcp-kit/cloudrun` の `HealthPath` | アプリで文字列を書かない |
-| 認証 | `/auth/*` | `gcp-kit/auth` がまとめて持つ |
-| 静的ファイル | `/static/*` | |
+| Top page (submission form) | `GET /` | |
+| Submission form | `GET /compose`, `GET /compose/<kind>` | Screens with no JSON counterpart (2.7). Forms whose input is different in kind, such as recipe editing or cover art, go below it: `/compose/recipe`, `/compose/image` |
+| Submit | `POST /jobs` | The kind is the body's `command` (`compose_recipe`, `generate_design_sheet` and so on; empty means the default). Same for forms and JSON. Response in 2.3 |
+| Job list (history) | `GET /jobs` | Finished jobs by default; filter with `?state=`. Kinds that share one record and differ only in `command` (songs, drafts, cover art and so on) are filtered with `?kind=`. Paging in 2.5 |
+| Job detail | `GET /jobs/{jobID}` | Always includes progress (`state` / `terminal` / `error`); once finished, the artifacts are in the same document. How, in 2.3 |
+| Delete a job | `DELETE /jobs/{jobID}` | Not `POST …/delete` |
+| Get an artifact | `GET /jobs/{jobID}/<artifact>` | `/audio`, `/video`, `/script`, `/recipe` and so on. `409` while unfinished |
+| Edit an artifact | `PUT /jobs/{jobID}/<artifact>` | Full replacement, hence `PUT`. No partial updates |
+| Action on a job | `POST /jobs/{jobID}/<verb>` | Verbs in 2.4. Response in 2.3 |
+| Child elements | `/jobs/{jobID}/<plural>/{index}` | E.g. `/cuts/{cutIndex}/keyframe`. Actions on a child take the same form: `/cuts/{cutIndex}/regenerate-keyframe`. Conditions below |
+| List of options | `GET /modes`, `GET /speakers` | Plural nouns |
+| Detail of an option | `GET /modes/{mode}` | In the path, not the query |
+| Worker endpoint | `POST /tasks/<verb>` | The value is one constant in `internal/domain/routes.go` |
+| Health check | `gcp-kit/cloudrun`'s `HealthPath` | The app does not spell the string |
+| Authentication | `/auth/*` | Owned as a whole by `gcp-kit/auth` |
+| Static files | `/static/*` | |
 
-ジョブ以外の主リソース（キャラクターなど）も同じ骨格で切ります。
-`/characters`、`/characters/{characterID}`、`/characters/{characterID}/<成果物>`。
+Primary resources other than jobs (characters and so on) follow the same skeleton:
+`/characters`, `/characters/{characterID}`, `/characters/{characterID}/<artifact>`.
 
-**子要素を添字で指す条件。** `{cutIndex}` のような添字は、親の成果物が確定した後に
-並びが変わらないときだけ使えます。挿入・削除・並べ替えが入るなら、添字ではなく
-安定 ID（`{cutID}`）に切り替えます。主流のガイドは最初から ID を求めますが、
-台本確定後にカット割りが固定される今の題材では添字の方が読みやすく、
-ID を発番する仕組みも要らないので、条件つきで添字を許しています。
+**When a child may be addressed by index.** An index such as `{cutIndex}` is allowed only when the
+order no longer changes once the parent artifact is final. If insertion, deletion or reordering can
+happen, switch to a stable ID (`{cutID}`). The mainstream guides ask for IDs from the start, but with
+today's subject, where cuts are fixed once the script is final, an index reads better and needs no ID
+minting, so it is allowed under that condition.
 
-### 2.3 非同期処理の応答
+### 2.3 Responses to asynchronous work
 
-投入とアクションはジョブを起こして即座に戻ります。応答は次で揃えます。
+Submissions and actions start a job and return at once. Responses are aligned as follows.
 
-| 項目 | 決定 |
+| Item | Decision |
 |---|---|
-| ステータス | `202 Accepted` |
-| `Location` ヘッダ | `/jobs/{jobID}`。クライアントがボディを読まずにポーリング先を得られる |
-| JSON ボディ | `job_id` を含む。画面向けはジョブ詳細ページへの遷移でよい |
-| ポーリング先 | `GET /jobs/{jobID}`。`terminal` が真になるまで（失敗も terminal）。完了後も同じ URL がそのまま詳細になる |
+| Status | `202 Accepted` |
+| `Location` header | `/jobs/{jobID}`. The client gets the polling target without reading the body |
+| JSON body | Includes `job_id`. A page may simply move to the job detail page |
+| Polling | `GET /jobs/{jobID}` until `terminal` is true (failure is terminal too). After completion the same URL is the detail |
 
-`Location` は主流のガイド（Google AIP-151、MS の long-running operation）が求めるもので、
-5 アプリとも投入とアクションの `202` に付けています（2026-09-04）。
+`Location` is what the mainstream guides require (Google AIP-151, Microsoft's long-running operations);
+all five apps set it on the `202` of submissions and actions (2026-09-04).
 
-**完了後の 1 文書。** `GET /jobs/{jobID}` の JSON は、進捗の項目をトップレベルに平らに置き、
-成果物をそこに足した 1 つの文書です。成果物の載せ方は 2 通りで、どちらにするかは
-JSON のキーが衝突するかで決まります。
+**One document after completion.** The JSON for `GET /jobs/{jobID}` puts the progress fields flat at
+the top level and adds the artifacts to that one document. There are two ways to add them, decided by
+whether the JSON keys collide.
 
-| 載せ方 | 条件 | 例 |
+| How | When | Examples |
 |---|---|---|
-| 平らに足す | 成果物のキーが進捗のキー（`job_id` / `state` / `title` など）と重ならない | 曲の `recipe` / `assessment` / `audio_url`、レビューの `report_url` |
-| 1 つのキーの下に入れ子 | 成果物が `job_id` や `title` を自分でも持つ | `detail`（動画の履歴詳細）、`comic`（漫画の state）、`image`（ジャケット） |
+| Added flat | The artifact's keys do not overlap the progress keys (`job_id` / `state` / `title` and so on) | A song's `recipe` / `assessment` / `audio_url`, a review's `report_url` |
+| Nested under one key | The artifact has its own `job_id` or `title` | `detail` (video history detail), `comic` (the comic state), `image` (cover art) |
 
-平らに足せないものを埋め込むと、Go の `encoding/json` は同名のキーを両方とも落とします。
-本文に載せるのは数 KB までで、それより大きい成果物（レポート全文など）はリンク（`report_url`）で
-指し、`GET /jobs/{jobID}/<成果物>` から取ります。
+Embedding something that cannot be added flat makes Go's `encoding/json` drop both keys of the same
+name. Only a few KB go in the body; larger artifacts (a full report and so on) are linked
+(`report_url`) and fetched from `GET /jobs/{jobID}/<artifact>`.
 
-### 2.4 アクションの動詞
+### 2.4 Action verbs
 
-`POST /jobs/{jobID}/<動詞>` の動詞は次に揃えます。
+The verbs in `POST /jobs/{jobID}/<verb>` are aligned as follows.
 
-| 動詞 | 意味 |
+| Verb | Meaning |
 |---|---|
-| `regenerate` | 同じ入力で作り直す |
-| `regenerate-<対象>` | 一部だけ作り直す（`regenerate-keyframe`、`regenerate-zip`） |
-| `generate-<対象>` | 既存の成果物から次の段階を作る（`generate-video`） |
-| `generate` | 起点（下書きや公開済みの曲）のレシピから、同じ種類の成果物を新しいジョブで作る |
-| `synthesize` | 保存済みの台本から音声を作る（台本を作らない） |
-| `finalize` | 分割して作った成果物を 1 本にまとめる |
-| `preview` | 副作用なく結果を見る。`POST …/<対象または動詞>/preview` の形（`/reading/preview`、`/post-youtube-comment/preview`） |
-| `apply-<対象>` | 保存済みの素材に後から当てる（`apply-title`） |
-| `post-<対象>` | 外部へ投稿する（`post-youtube-comment`）。取り消せないので `…/preview` を必ず持つ |
+| `regenerate` | Make it again from the same input |
+| `regenerate-<target>` | Make part of it again (`regenerate-keyframe`, `regenerate-zip`) |
+| `generate-<target>` | Make the next stage from an existing artifact (`generate-video`) |
+| `generate` | Make an artifact of the same kind, as a new job, from the recipe of the source (a draft or a published song) |
+| `synthesize` | Make audio from a saved script (without making a script) |
+| `finalize` | Combine artifacts made in pieces into one |
+| `preview` | See the result without side effects, in the form `POST …/<target or verb>/preview` (`/reading/preview`, `/post-youtube-comment/preview`) |
+| `apply-<target>` | Apply something to a saved asset afterwards (`apply-title`) |
+| `post-<target>` | Post to an outside service (`post-youtube-comment`). Irreversible, so it always has `…/preview` |
 
-新しい動詞を足すときは、既存の動詞で表せないことを確認してから足します。
-アクション名は動詞で始めます。名詞だけ（`cover-art`、`title`、`youtube`）は「作る」のか「当てる」のか
-「投稿する」のか読み手が補うことになるので使いません。`POST` で作られる副リソース（`POST /jobs`）とは
-別で、ジョブ配下の `POST` はすべてアクションです。
+Before adding a verb, confirm that no existing verb expresses it. Action names start with a verb. A
+bare noun (`cover-art`, `title`, `youtube`) leaves the reader to guess whether it makes, applies or
+posts, so it is not used. This is distinct from a sub-resource created by `POST` (`POST /jobs`): every
+`POST` under a job is an action.
 
-### 2.5 一覧のページングとフィルタ
+### 2.5 Paging and filtering lists
 
-| 項目 | 決定 |
+| Item | Decision |
 |---|---|
-| ページ指定 | `?page=N`（1 始まり）と `?per_page=N`。1 未満は 1 ページ目、最終ページを超えたら最終ページに丸める（`go-utils/paging.New`） |
-| フィルタ | `?<snake_case>=値`。ジョブの状態は `state`（`queued` / `running` / `succeeded` / `failed`）、工程は `stage`、種別は `kind` |
-| JSON の形 | `items` と、`go-utils/paging.PageMeta`（`page`、`per_page`、`total`、`has_next` など）を同じ階層に並べる |
+| Page selection | `?page=N` (1-based) and `?per_page=N`. Below 1 means page 1; past the last page rounds to the last page (`go-utils/paging.New`) |
+| Filters | `?<snake_case>=value`. Job state is `state` (`queued` / `running` / `succeeded` / `failed`), stage is `stage`, kind is `kind` |
+| JSON shape | `items` side by side with `go-utils/paging.PageMeta` (`page`, `per_page`, `total`, `has_next` and so on) |
 
-カーソル方式は採りません。一覧の裏がオブジェクトストレージか Firestore の
-単純な降順で、履歴は 1 利用者あたり数百件の規模だからです。
-再検討の条件は、一覧が 1 秒を超えるか、複数利用者の履歴を 1 つの一覧に混ぜるときです。
+Cursors are not used. Behind each list is a simple descending scan of object storage or Firestore, and
+the history is a few hundred entries per user. Revisit when a list takes more than a second, or when
+the histories of several users are mixed into one list.
 
-### 2.6 エラー応答
+### 2.6 Error responses
 
-| 項目 | 決定 |
+| Item | Decision |
 |---|---|
-| JSON の形 | `{"error": "<メッセージ>"}`。`go-serve-kit/respond` の `Error` を使う |
-| HTML の場合 | `Accept` に従って画面で返す。判定も `respond` に任せる |
-| 4xx の使い分け | 入力不正 `400`、未認証 `401`、権限なし `403`、無い `404`、重複投入 `409` |
-| 5xx | 上流 API の失敗は `502`、それ以外は `500`。詳細はログに出し、ボディに出さない |
+| JSON shape | `{"error": "<message>"}`, through `go-serve-kit/respond`'s `Error` |
+| HTML | A page, according to `Accept`; `respond` decides that too |
+| 4xx | Bad input `400`, unauthenticated `401`, forbidden `403`, missing `404`, duplicate submission `409` |
+| 5xx | Upstream API failure `502`, anything else `500`. Details go to the log, not the body |
 
-RFC 9457（Problem Details）は採りません（3.6）。
+RFC 9457 (Problem Details) is not used (3.6).
 
-### 2.7 HTML と JSON
+### 2.7 HTML and JSON
 
-同じパスで `Accept` により HTML と JSON を切り替えます
-（`go-serve-kit/respond` の `WantsJSON`）。
-JSON 専用のパスを別に切るのは、次のときだけです。
+The same path switches between HTML and JSON by `Accept` (`go-serve-kit/respond`'s `WantsJSON`).
+A JSON-only path is cut only when:
 
-- 入力フォーム（`GET /compose`）のように JSON の対応物が存在しない
-- 一覧で HTML は要約、JSON は全件のように**返す中身が違う**
+- there is no JSON counterpart, as with the submission form (`GET /compose`), or
+- **the content differs**, as with a list whose HTML is a summary and whose JSON is complete.
 
-「JSON だから `/api/` を付ける」は理由になりません。
+"It is JSON, so it gets `/api/`" is not a reason.
 
 ---
 
-## 3. 採らなかった案
+## 3. Rejected alternatives
 
-### 3.1 `/api/` 接頭辞
+### 3.1 An `/api/` prefix
 
 ```text
-採用: 付けない
-理由: 同じ URL を Accept で切り替える方針と衝突する。
-      /api/ を付けると「HTML 版」と「JSON 版」の 2 本を持つことになり、
-      認証・検証・取得を 2 度書くか、片方を薄いラッパーにするかの
-      どちらかになる。どちらも片方だけ直して食い違う。
-      主流のガイドは API を別パスか別ホストに置く前提で書かれているが、
-      それは第三者に API を公開する前提。利用者が自分の MCP サーバーだけの
-      いまは、Vary: Accept を付けておけばキャッシュの罠も踏まない。
-再検討の条件: 第三者に API を公開するとき。または、ブラウザ向けと M2M 向けで
-      認証方式だけでなくレート制限や課金の単位まで分けたくなったとき
+Adopted: no prefix
+Reason: it conflicts with switching one URL by Accept. With /api/ there are two
+        routes, an HTML one and a JSON one, so authentication, validation and loading
+        are either written twice or one side becomes a thin wrapper; either way one
+        side gets fixed and the two drift apart.
+        The mainstream guides assume the API sits on a separate path or host because
+        it is published to third parties. While the only caller is the owner's own MCP
+        server, Vary: Accept avoids the caching trap.
+Revisit when: the API is published to third parties, or browser and M2M callers
+        need to differ not only in authentication but in rate limits or billing units
 ```
 
 ### 3.2 `POST …/delete`
 
 ```text
-採用: DELETE /jobs/{jobID}
-理由: HTML フォームは DELETE を送れないので、画面用に POST …/delete を
-      別に持つ実装があった。すると同じ削除が 2 本になり、M2M 側は DELETE、
-      画面側は POST と、認可やログの入口が分かれる。
-      画面の削除ボタンは fetch で DELETE を送る形が多数派（4/5）で、
-      そちらに寄せれば 1 本で済む。
-再検討の条件: JavaScript 無しで動く画面を要件にしたとき
+Adopted: DELETE /jobs/{jobID}
+Reason: HTML forms cannot send DELETE, so some implementations kept POST …/delete
+        for pages. That made two deletes, DELETE for M2M and POST for pages, with
+        separate entry points for authorization and logging.
+        Most apps (4/5) already had the delete button send DELETE with fetch;
+        aligning on that leaves one route.
+Revisit when: pages must work without JavaScript
 ```
 
-### 3.3 進捗は `/jobs/{jobID}`、詳細は `/history/{jobID}` の 2 根
+### 3.3 Two roots: progress at `/jobs/{jobID}`, detail at `/history/{jobID}`
 
 ```text
-採用: /jobs/{jobID} 一本
-理由: 初版時点の既存アプリは 5 本中 3 本が、進捗を /jobs/{id}、完了後の
-      詳細と成果物を /history/{id} で返す 2 根だった。同じ jobID を
-      2 つの URL で指すので、クライアントは「今どちらを叩くべきか」を
-      state を見て切り替える必要があり、MCP サーバーがそのぶんの分岐を持っていた。
-      主流のガイドはどれも「1 エンティティ 1 リソース」で、履歴は
-      GET /jobs?state=succeeded のようなビューにする。こちらに寄せると
-      投入直後から削除まで URL が 1 つで、ポーリングが完了後にそのまま詳細になる。
-      移行コストは 4 章の手順で払う。
-再検討の条件: なし。2 根に戻す理由は「既存がそうだった」以外に無い
+Adopted: /jobs/{jobID} only
+Reason: when the convention was first written, 3 of the 5 apps had two roots,
+        progress at /jobs/{id} and the finished detail and artifacts at
+        /history/{id}. One jobID had two URLs, so clients had to pick one by looking
+        at state, and the MCP server carried that branching.
+        Every mainstream guide has one resource per entity and makes history a view
+        such as GET /jobs?state=succeeded. Aligned on that, a job has one URL from
+        submission to deletion, and polling turns into the detail once it finishes.
+        The migration was paid for with the steps in section 4.
+Revisit when: never. The only reason for two roots was "that is how it was"
 ```
 
-### 3.4 `POST /compose` で作成する
+### 3.4 Creating with `POST /compose`
 
 ```text
-採用: POST /jobs。種別はボディの command
-理由: 初版時点の既存アプリは POST /compose と POST /compose-<種別> で
-      投入していた。3.3 で /jobs を主リソースにしたので、作成も同じ根に置く。
-      /compose-draft のような種別ごとのパスは、種別が増えるたびに
-      パスと MCP サーバーの両方が増える。ボディの 1 フィールドなら
-      増えるのはスキーマだけ。
-      GET /compose の入力フォームだけは残す（JSON の対応物が無い画面、2.7）。
-再検討の条件: 種別ごとに入力スキーマがまったく別物になり、
-      1 つの POST /jobs で受けるとバリデーションが分岐だらけになるとき。
-      そのときは POST /jobs/<種別> ではなく、別リソース（/drafts など）に切る
+Adopted: POST /jobs, with the kind in the body's command
+Reason: the apps used to submit with POST /compose and POST /compose-<kind>.
+        3.3 made /jobs the primary resource, so creation goes under the same root.
+        Per-kind paths such as /compose-draft grow both the paths and the MCP server
+        with every kind; one body field grows only the schema.
+        The GET /compose form stays (a screen with no JSON counterpart, 2.7).
+Revisit when: the input schemas of the kinds become entirely different and one
+        POST /jobs turns validation into a mass of branches. Then cut a separate
+        resource (/drafts and so on), not POST /jobs/<kind>
 ```
 
-### 3.5 バージョニング（`/v1/`）
+### 3.5 Versioning (`/v1/`)
 
 ```text
-採用: 持たない
-理由: 主流のガイドは全部 URL かヘッダで版を持つが、それは呼び出し元の
-      更新を強制できない前提。ここでは呼び出し元が自分の MCP サーバーだけで、
-      デプロイ順序も自分で決められる。版の代わりに 4 章の
-      「新旧を両方登録 → 切替 → 旧を消す」で移行する。
-再検討の条件: 第三者に API を公開するとき（3.1 と同じ）
+Adopted: none
+Reason: every mainstream guide carries a version in the URL or a header, because it
+        cannot force callers to update. Here the only caller is the owner's MCP
+        server and the deployment order is the owner's to choose. Instead of
+        versions, migrate with "register old and new → switch → remove the old"
+        (section 4).
+Revisit when: the API is published to third parties (as in 3.1)
 ```
 
 ### 3.6 RFC 9457 Problem Details
 
 ```text
-採用: {"error": "<メッセージ>"} のまま
-理由: Problem Details（type / title / status / detail / instance）は
-      エラーの種別をクライアントが機械的に分岐する前提の形。
-      いまの呼び出し元はメッセージを人に見せるだけで、種別で分岐していない。
-      すでに 5 アプリが {"error"} で揃っており、変えるコストに見合う利得が無い。
-再検討の条件: クライアントがエラー種別で挙動を変える必要が出たとき
-      （リトライ可否の判定など）。そのときは status と type を足す
+Adopted: keep {"error": "<message>"}
+Reason: Problem Details (type / title / status / detail / instance) assumes clients
+        branch on the error type mechanically. Today's callers only show the message
+        to a person and do not branch on type. All five apps already agree on
+        {"error"}, and changing it would not pay for itself.
+Revisit when: a client needs to behave differently by error type (deciding whether
+        to retry and so on). Then add status and type
 ```
 
-### 3.7 `/modes/{mode}` でモードの詳細を指す（楽曲生成サービス）
+### 3.7 Addressing a mode's detail as `/modes/{mode}` (the music app)
 
 ```text
-採用: GET /modes/detail?kind=&key= のまま（規約 2.2 からの例外）
-理由: モードキーが "en/edm_pop" のようにスラッシュを含み、chi のパスパラメータには
-      入らない。%2F にすると CleanPath の正規化と噛み合わない。
-      kind（lyrics / compose / coverart）も要るので、パスにすると 2 段になる。
-再検討の条件: キーからスラッシュを外す（言語を別の軸にする）とき
+Adopted: keep GET /modes/detail?kind=&key= (an exception to 2.2)
+Reason: mode keys contain a slash, as in "en/edm_pop", which does not fit a chi path
+        parameter, and %2F does not mix with CleanPath's normalisation. kind
+        (lyrics / compose / coverart) is needed too, so the path would be two levels.
+Revisit when: the slash leaves the key (language becomes a separate axis)
 ```
 
-### 3.8 フレームワークの導入
+### 3.8 Adopting a framework
 
 ```text
-採用: chi のまま
-理由: 命名のばらつきは規約の不在が原因で、ルータの表現力は足りている。
-      net/http 非互換のフレームワークは gcp-kit / go-serve-kit の
-      middleware を書き直すコストがかかり、命名には効かない。
-再検討の条件: なし（命名の問題では再検討しない）
+Adopted: stay on chi
+Reason: the naming drift came from having no convention; the router is expressive
+        enough. A framework that is not net/http-compatible would mean rewriting the
+        gcp-kit / go-serve-kit middleware and would do nothing for naming.
+Revisit when: never for naming reasons
 ```
 
 ---
 
-## 4. 規約から外れたルートの見つけ方
+## 4. Finding routes that depart from the convention
 
-5 アプリと MCP サーバーは 2026-09-04 に寄せ終えており、旧パスは残していません。
-以後はルートを足すたびに、次の grep で外れが無いことを確かめます。
+The five apps and the MCP server were aligned on 2026-09-04, and no old paths remain. From then on,
+each new route is checked with these greps:
 
 ```bash
-# snake_case のパス
+# snake_case in paths
 grep -rn 'r\.\(Get\|Post\|Put\|Delete\)("[^"]*_' internal/server/router.go
-# /api/ 接頭辞、/history の 2 根、/compose への投入
+# /api/ prefix, the /history root, submissions to /compose
 grep -rn '"/api\|"/history\|r\.Post("/compose' internal/server/router.go
-# 202 を返しているのに Location を付けていない箇所
-# ※ 削除の 202 や、HTML の受付画面を描くだけのハンドラも当たる。投入とアクションの JSON 応答だけを見る
+# 202 responses without Location
+# Note: also matches the 202 of deletes and handlers that only render an HTML acceptance page; look only at JSON responses to submissions and actions
 grep -rln --include='*.go' 'StatusAccepted' internal/server/handlers | grep -v _test | xargs grep -L 'Location'
 ```
 
-MCP サーバー側は、各ツールの説明に書いた `endpoints` が相手の `router.go` に実在するかを
-テストが確かめます（5 リポジトリを隣に checkout した環境でだけ走ります）。ルートを
-動かしたら、そのテストが先に落ちます。
+On the MCP server side, a test checks that the backend routes each tool declares (`endpoints`) exist
+in that backend's `router.go` (it runs only where the five repositories are checked out side by side).
+Move a route and that test fails first.
 
-大きく動かすときの手順は初版のときと同じです。新旧を両方登録し（`/jobs/{jobID}` 配下を
-`func(r chi.Router)` に切り出して `r.Route` で 2 箇所に掛ける）、MCP サーバーを切り替え、
-デプロイ後に旧を消します。利用者が本人だけの間は、両登録を飛ばして同時デプロイでも構いません。
+For a large move, use the same steps as the first migration: register both old and new (pull the
+routes under `/jobs/{jobID}` into a `func(r chi.Router)` and mount it at both places with `r.Route`),
+switch the MCP server, and remove the old after deploying. While the owner is the only user, the double
+registration may be skipped in favour of deploying both sides together.
 
 ---
 
-## 更新履歴
+## Changelog
 
-- 2026-09-03: 初版。5 アプリのルート登録を突き合わせ、多数派（3/5）の形を規約にした。
-  同日、Google AIP / Microsoft / Zalando のガイドと比較し、非同期応答（`Location`）、
-  ページング、エラー応答、バージョニングと Problem Details を採らない理由を追記。
-  あわせて、多数派だった `/jobs` と `/history` の 2 根を `/jobs` 一本に、
-  `POST /compose` を `POST /jobs` に改めた。同日、公開アプリ 1 本を先にこの形へ寄せた（旧パスは残置）。
-- 2026-09-04: 5 アプリと MCP サーバーの移行完了。実装で決めたことを反映:
-  種別はボディの `command`（`stage` から改称）、一覧の `?kind=`、フォームの派生 `/compose/<種別>`、
-  `GET /jobs/{jobID}` の 1 文書（平らに足すか入れ子にするかの条件）、動詞 `generate` / `synthesize`、
-  `Location` を実装済みに、例外（3.7 `/modes/detail`）と動詞 `apply-` / `post-` を追記。名詞だけの
-  アクション名 3 本（`cover-art` / `title` / `youtube`）は同日に改名したので規約には残さない。
-  旧パスは全部消したので、4 章を「寄せ方」から「見つけ方」に改めた。
+- 2026-09-03: First version. The route registrations of the five apps were compared and the majority
+  form (3/5) became the convention. The same day, it was compared with the Google AIP, Microsoft and
+  Zalando guides, adding asynchronous responses (`Location`), paging, error responses, and the reasons
+  for not adopting versioning or Problem Details. The majority's two roots, `/jobs` and `/history`, were
+  merged into `/jobs`, and `POST /compose` became `POST /jobs`. One public app was moved first that day
+  (old paths kept).
+- 2026-09-04: The five apps and the MCP server finished migrating. Decisions made during
+  implementation: the kind is the body's `command` (renamed from `stage`), `?kind=` on lists,
+  `/compose/<kind>` for derived forms, the one document of `GET /jobs/{jobID}` (when to add flat and
+  when to nest), the verbs `generate` / `synthesize`, `Location` marked as implemented, the exception
+  (3.7 `/modes/detail`), and the verbs `apply-` / `post-`. Three noun-only action names (`cover-art` /
+  `title` / `youtube`) were renamed the same day and are not kept in the convention. All old paths were
+  removed, so section 4 changed from "how to migrate" to "how to find".
+- 2026-11-10: Translated to English.

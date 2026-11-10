@@ -1,153 +1,171 @@
-# アプリ README 規約
+# Application README Convention
 
-Cloud Run 上で web / worker として動くアプリケーションの README をどう構成するかを決める文書です。
-想定する読み手は、新しいアプリを起こす人と、既存アプリの README を直す人。
-読み終えると「README に何を書き、何を CLAUDE.md へ送り、何を書かないか」を機械的に決められ、
-既存の README のどこが規約から外れているかを自分で判定できます。
+Decides how the READMEs of applications running on Cloud Run as web / worker services are structured.
+It is for people starting a new application and people fixing an existing application's README.
+After reading it you can decide mechanically what goes in the README, what is sent to CLAUDE.md and
+what is not written at all, and judge for yourself where an existing README departs from the
+convention.
 
-ライブラリの README は [library-readme-convention.md](library-readme-convention.md) が持ちます。
-骨格を固定しないなど、意図的に別の規約です（理由はそちらの §3.1）。
-
----
-
-## 1. なぜ揃えるのか
-
-5 本のアプリを並べたとき、README は 268 行から 580 行まで開き、見出しの順序も語彙も揃っていませんでした。
-差の正体は見出しではなく、**README が何を担うか**の違いでした。
-
-- 新しいアプリは README に「使い方」を書き、理由は CLAUDE.md に置いていた（README 268 行 / CLAUDE.md 477 行）。
-- 古いアプリは README に設計の理由を書き込み、CLAUDE.md が薄かった（README 580 行 / CLAUDE.md 121 行）。
-  動かし方を探す読み手が、設計の随筆を通り過ぎてから環境変数に辿り着く。
-- 技術スタックの表は `go.mod` の写しで、ライブラリを差し替えても直らずに残っていた。
-- 改名した型の旧名が README に 10 か所残っていた。理由の随筆は誰も読み返さないので、腐っても気づかない。
-
-README の読み手は「動かしたい人」、CLAUDE.md の読み手は「変えたい人」です。読み手が違う文書を
-1 つに書くと、どちらの読み手にも長すぎる文書になります。
+Library READMEs are covered by [library-readme-convention.md](library-readme-convention.md). It is a
+deliberately different convention that does not fix the skeleton (why: its 3.1). The languages
+(English `README.md`, Japanese `README.ja.md`, English comments, messages and test names) are set there
+in [2.7](library-readme-convention.md#27-languages) and apply here unchanged.
 
 ---
 
-## 2. 規約
+## 1. Why align them
 
-### 2.1 役割分担
+When the five applications were lined up on 2026-09-04, their READMEs ranged from 268 to 580 lines and
+agreed on neither the order nor the wording of headings. The real difference was not the headings but
+**what the README was for**.
 
-| 文書 | 読み手 | 書くこと | 目安 |
+- The newer apps wrote usage in the README and reasons in CLAUDE.md (README 268 lines / CLAUDE.md 477).
+- The older apps wrote design reasons into the README and had a thin CLAUDE.md (README 580 lines /
+  CLAUDE.md 121). Readers looking for how to run it waded through design essays before reaching the
+  environment variables.
+- Technology-stack tables were copies of `go.mod` and stayed behind when a library was swapped.
+- A renamed type's old name was left in one README in 10 places. Nobody rereads reason essays, so
+  nobody notices when they rot.
+
+The README's reader wants to run it; the CLAUDE.md reader wants to change it. One document for two
+readers is too long for both.
+
+---
+
+## 2. Convention
+
+### 2.1 Division of roles
+
+| Document | Reader | What it says | Size |
 |---|---|---|---|
-| README.md | 動かしたい人 | 何をするか、どう動かすか、どう呼ぶか | 250〜350 行 |
-| CLAUDE.md | 変えたい人 | なぜそうしたか、採らなかった案、踏んだ穴、触ってはいけない場所 | 上限なし |
-| public-docs | 横断して読む人 | アプリをまたぐ規約と、その理由 | — |
+| README.md (+ README.ja.md) | Someone who wants to run it | What it does, how to run it, how to call it | 250-350 lines |
+| CLAUDE.md | Someone who wants to change it | Why it is so, rejected alternatives, holes stepped in, places not to touch | No limit |
+| public-docs | Someone reading across apps | Conventions spanning apps, and their reasons | — |
 
-判定は 1 つです。**文の中に「なぜ」「以前は」「採らなかった」「実際に〜があった」が出てきたら、
-その文は CLAUDE.md** です。README に残すのは、その決定の結果として利用者が従うべき事実だけです
-（例: 「台本はペイロードに載せず `job_id` だけを渡します」は README、「1MB 上限に当たった」は CLAUDE.md）。
+There is one test: **a sentence containing "why", "used to", "rejected" or "it actually happened that"
+belongs in CLAUDE.md.** The README keeps only the facts users have to follow as a result of the
+decision (e.g. "the script is not put in the payload; only `job_id` is passed" is README; "we hit the
+1 MB limit" is CLAUDE.md).
 
-### 2.2 骨格
+### 2.2 Skeleton
 
-見出しの文言・順序・階層は固定です。節を増やしたくなったら、まず 2.1 の判定を疑ってください。
+The wording, order and nesting of headings are fixed. If you want to add a section, first doubt the
+test in 2.1.
 
 ```markdown
-# <絵文字> <アプリ名>
-<バッジ>
+# <emoji> <app name>
+<badges>
 
-## 🚀 概要 (About) - <一行の主張>
-## 📦 使い方
-### 1. 環境設定
-### 2. 起動
-### 3. HTTP エンドポイント
-### 4. タスクのペイロード
-## 🔄 処理シーケンス図
-## 🌳 プロジェクト構成ツリー図
-## 📜 ライセンス (License)
+English | [日本語](README.ja.md)
+
+## 🚀 About - <one-line claim>
+## 📦 Usage
+### 1. Configuration
+### 2. Running
+### 3. HTTP endpoints
+### 4. Task payload
+## 🔄 Sequence diagram
+## 🌳 Project structure
+## 📜 License
 ```
 
-### 2.3 各節の中身
+### 2.3 What each section holds
 
-| 節 | 書くこと | 形 |
+| Section | What it says | Form |
 |---|---|---|
-| 概要 | 何を入力に何を作るか。何が特徴か（利用者の操作に表れるものだけ）。web / worker の 2 面構成 | 段落 2〜3 つ。特徴を箇条書きにするなら 5 本まで |
-| 1. 環境設定 | 環境変数。**ロール別に 4 表**（どのロールでも必須 / Web 面で必須 / Worker 面で必須 / 任意）。既定値と、値の大小関係の制約（タイムアウトの三段など）はここに書く | `変数名 \| 説明` の表 |
-| 2. 起動 | 起動コマンドと、`SERVER_ROLE` ごとに組み立てるもの・公開されるルート | 表 |
-| 3. HTTP エンドポイント | 全ルート。認証の外側にあるもの、`Accept` による表現の出し分け、CSRF の要否 | `メソッド \| パス \| 用途` の表 |
-| 4. タスクのペイロード | `command` ごとの役割と必須フィールド、JSON の例 | 表 ＋ コードブロック |
-| 処理シーケンス図 | 投入から通知までの実際の順序。queued の記録が enqueue より前にあることが読み取れる粒度 | Mermaid `sequenceDiagram` |
-| 構成ツリー | `internal/` 配下のディレクトリと 1 行の役割 | `text` ブロック。`ls` の結果から書く |
-| ライセンス | ライセンスと、使用素材の帰属 | 箇条書き |
+| About | What it makes from what input; what is distinctive (only what shows in users' operations); the web / worker split | Two or three paragraphs. At most five bullets if features are listed |
+| 1. Configuration | Environment variables, **in four tables by role** (required for every role / required for web / required for worker / optional). Defaults and ordering constraints between values (the timeout ladder and so on) go here | `Variable \| Description` tables |
+| 2. Running | The start command, and what each `SERVER_ROLE` assembles and which routes it exposes | Table |
+| 3. HTTP endpoints | Every route. What sits outside authentication, representation by `Accept`, whether CSRF applies | `Method \| Path \| Purpose` table |
+| 4. Task payload | The role and required fields of each `command`, a JSON example | Table + code block |
+| Sequence diagram | The actual order from submission to notification, detailed enough to see that queued is recorded before enqueueing | Mermaid `sequenceDiagram` |
+| Project structure | The directories under `internal/` with a one-line role | A `text` block written from `ls` |
+| License | The license and attribution of materials used | Bullets |
 
-### 2.4 書かないもの
+### 2.4 What not to write
 
-| 書かない | 理由 | 代わりに |
+| Do not write | Reason | Instead |
 |---|---|---|
-| 技術スタックの表 | `go.mod` の写しで、差し替えても直らない | `go.mod` と public-docs の libraries.md |
-| 「原則」「設計思想」の節 | 宣伝調になりやすく、利用者の操作に結びつかない | 事実だけを概要へ、理由は CLAUDE.md へ |
-| アーキテクチャの解説 | 「変えたい人」向けの内容 | CLAUDE.md |
-| 手で書き写した一覧（環境変数・ルート・コマンド以外） | 実体とずれる | 求め方（`grep`）を書く |
-| 横断規約（URL 命名・ワーカー）の内容の写し | 規約側が更新されると取り残される。「`/api/` 接頭辞を持たない」「queued を投入より前に書く」は規約の話 | 規約へのリンク 1 行。README に書くのはそのアプリのルート表そのもの |
-| 公開リポジトリでの非公開リポジトリ名 | 公開文書に非公開名が載る | 役割名（楽曲生成サービス、MCP ゲートウェイ） |
-| 相対日付 | 読まれる時点で意味が変わる | `2026-09-04` の形 |
+| A technology-stack table | A copy of `go.mod`; stays behind when something is swapped | `go.mod` and [libraries.md](libraries.md) |
+| "Principles" or "design philosophy" sections | Tend to read like marketing and tie to no user operation | Facts into About, reasons into CLAUDE.md |
+| Architecture explanations | Content for the person who wants to change it | CLAUDE.md |
+| Hand-copied lists (other than environment variables, routes and commands) | They drift from the real thing | How to find them (`grep`) |
+| Copies of the cross-app conventions (URL naming, workers) | Left behind when the convention changes. "No `/api/` prefix" and "record queued before enqueueing" are the conventions' business | One line linking the convention. The README holds the app's own route table |
+| Private repository names in a public repository | Puts private names in a public document | Role names (the music service, the MCP gateway) |
+| Relative dates | See [documentation-guideline.md](documentation-guideline.md#7-leave-a-trail-of-changes) | Absolute dates (`2026-09-04`) |
 
-環境変数・ルート・コマンドの表は「手書きの一覧」ですが、それ自体が README の目的なので例外です。
-そのぶん 2.5 の検証を通します。
+The environment variable, route and command tables are hand-written lists too, but they are the point
+of the README, so they are the exception. That is why they go through the check in 2.5.
 
-### 2.5 事実の検証
+### 2.5 Checking the facts
 
-README の表は、書くたびにコードと突き合わせます。
+Each time the README's tables are written, they are checked against the code.
 
-| 表 | 突き合わせ先 |
+| Table | Checked against |
 |---|---|
-| 環境変数 | `internal/config`（`env:"..."` タグ） |
-| ルート | `internal/server/router.go` |
-| `command` | `internal/domain` のコマンド定数 |
-| 構成ツリー | `ls internal` |
-| 型名・関数名 | `grep` で実在すること。改名したら README も同じコミットで直す |
+| Environment variables | `internal/config` (`env:"..."` tags) |
+| Routes | `internal/server/router.go` |
+| `command` | The command constants in `internal/domain` |
+| Project structure | `ls internal` |
+| Type and function names | `grep` that they exist. When renaming, fix the README (both languages) in the same commit |
 
 ---
 
-## 3. 採らなかった案
+## 3. Rejected alternatives
 
-### 3.1 README に設計理由を残す
+### 3.1 Keeping design reasons in the README
 
 ```text
-採用: 理由は CLAUDE.md へ移す
-理由: 読み手が違う。動かしたい人は理由を読み飛ばし、変えたい人は README を読まない。
-      両方に書くと二重管理になり、片方だけ直る
-再検討の条件: なし
+Adopted: move reasons to CLAUDE.md
+Reason: the readers differ. People who want to run it skip the reasons, and people
+        who want to change it do not read the README. Writing them in both means
+        maintaining two copies, and only one gets fixed
+Revisit when: never
 ```
 
-### 3.2 見出しだけ揃えて中身は動かさない
+### 3.2 Aligning only the headings and leaving the content
 
 ```text
-採用: 中身も 2.1 の判定で振り分ける
-理由: 役割が逆転した README（理由が本文、CLAUDE.md が薄い）は見出しを揃えても長いまま。
-      見出しが同じで中身の性格が違うほうが、読み手を迷わせる
-再検討の条件: なし
+Adopted: sort the content by the test in 2.1 too
+Reason: a README whose roles are reversed (reasons in the body, a thin CLAUDE.md)
+        stays long with aligned headings. Same headings over content of a different
+        nature confuses readers more
+Revisit when: never
 ```
 
-### 3.3 技術スタックの表を残す
+### 3.3 Keeping the technology-stack table
 
 ```text
-採用: 削除する
-理由: go.mod と libraries.md の写し。ライブラリを差し替えたときに 3 か所目として取り残される
-再検討の条件: なし
+Adopted: delete it
+Reason: a copy of go.mod and libraries.md. When a library is swapped it is left
+        behind as a third place
+Revisit when: never
 ```
 
 ---
 
-## 4. 規約から外れた README の見つけ方
+## 4. Finding READMEs that depart from the convention
 
 ```bash
-# 見出しが骨格と違う
+# Headings that differ from the skeleton
 grep -n '^## \|^### ' README.md
-# 理由が README に残っている
-# ※「実際に渡る文字列」のような普通の語も当たる。件数ではなく中身を読んで判断する
-grep -n '以前は\|なぜ\|採らなかった\|実際に' README.md
-# 技術スタックの表が残っている
-grep -n '技術スタック\|Technology Stack' README.md
-# 改名後の旧名が残っている（例）
-grep -n 'Filter\b\|go-job-firestore' README.md
+# Reasons left in the README
+# Note: ordinary phrases such as "the string actually sent" match too; read the content, not the count
+grep -n -i 'why\|used to\|rejected\|actually' README.md
+# A technology-stack table left over
+grep -n -i 'tech stack\|technology stack' README.md
+# Old names left after a rename (example: step types that were renamed to Step)
+grep -n 'Filter\b' README.md
 ```
+
+The language checks (the switch, Japanese left in `README.md`) are in
+[library-readme-convention.md §4](library-readme-convention.md#4-finding-readmes-that-depart-from-the-convention).
 
 ---
 
-## 更新履歴
+## Changelog
 
-- 2026-09-04: 初版。5 本のアプリの README を突き合わせ、最も新しいアプリの骨格
-  （使い方に絞り、理由は CLAUDE.md）を規約にした。
+- 2026-09-04: First version. The READMEs of the five applications were compared, and the skeleton of
+  the newest one (usage only, reasons in CLAUDE.md) became the convention.
+- 2026-11-10: Translated to English. The skeleton's headings are now the English ones with a language
+  switch; languages follow library-readme-convention.md 2.7.

@@ -1,178 +1,188 @@
-# ワーカー規約
+# Worker Convention
 
-Cloud Run 上の Web 面が Cloud Tasks へ投入し、worker 面が受け取って成果物を作る
-アプリケーション群で、ジョブ 1 件の「一生」をどう扱うかを決める文書です。
-想定する読み手は、新しいワーカーアプリを起こす人と、既存アプリにコマンドを足す人。
-読み終えると「投入から結末の記録までにどの順で何をするか」を規約から機械的に決められ、
-既存アプリのどこが規約から外れているかを自分で判定できます。
+Decides how the applications whose web side enqueues to Cloud Tasks, and whose worker side receives the
+task and makes the artifact, handle the "life" of one job.
+It is for people starting a new worker app and people adding a command to an existing one.
+After reading it you can derive "what happens, in what order, from submission to recording the outcome"
+from the convention mechanically, and judge for yourself where an existing app departs from it.
 
-URL の切り方は [url-naming-convention.md](url-naming-convention.md)、キューと
-タイムアウトのインフラ側の判断はインフラ構成のリポジトリ（非公開）の規約が持ちます。
-この文書はその間、アプリのコードが持つ部分だけを扱います。
-
----
-
-## 1. なぜ揃えるのか
-
-ジョブが黙って消える事故は、どれも「順序」か「context」の取り違えで起きました。
-
-- 投入してから queued を書くと、数十ミリ秒で届いたワーカーが書いた running を、
-  遅れて来た queued が上書きする（2 アプリが本番で踏んだ）。
-- 失敗パスだけを切り離した ctx で記録し、成功パスを生の ctx で記録すると、期限と
-  前後して完了したジョブが running のまま固着する（3 アプリで同時に見つかった）。
-- panic を回復しないと、HTTP 側が 500 を返すだけで結末が記録されない。キューは
-  `max_attempts = 1` なので再試行も来ず、ジョブは永久に running になる（1 アプリだけ
-  回復していた）。
-
-どれも「書き間違い」ではなく「片方への適用忘れ」です。ヘルパーの共通化では防げず、
-順序そのものをライブラリが持つ形にすると、忘れる書き方が表現できなくなります。
-その形が `gcp-kit/worker.Lifecycle` で、この規約はそれをどう埋めるかの取り決めです。
+How URLs are cut is in [url-naming-convention.md](url-naming-convention.md). Infrastructure-side decisions
+about queues and service timeouts are in the infrastructure repository's conventions (private). This
+document covers what sits between them: the part the application's code owns.
 
 ---
 
-## 2. 規約
+## 1. Why align them
 
-### 2.1 ジョブの一生
+Every incident in which a job silently disappeared came from mixing up an **order** or a **context**.
+
+- Recording queued after enqueueing: a worker reached within tens of milliseconds wrote running, and the
+  late queued overwrote it (two apps hit this in production).
+- Recording the failure path on a detached ctx but the success path on the raw ctx: jobs that finished
+  around the deadline stuck at running (found in three apps at once).
+- Not recovering a panic: the HTTP side just returned 500 and no outcome was recorded. With
+  `max_attempts = 1` no retry came either, and the job stayed running forever (only one app recovered).
+
+None of these is a typo; each is a fix applied to one path and forgotten on the other. Shared helpers
+cannot prevent that. A library that owns the order itself makes the forgetful version impossible to
+write. That library is `gcp-kit/worker.Lifecycle`, and this convention is the agreement on how to fill
+it in.
+
+---
+
+## 2. Convention
+
+### 2.1 The life of a job
 
 ```
-Web 面                                 worker 面（gcp-kit/worker.Lifecycle）
+Web side                               Worker side (gcp-kit/worker.Lifecycle)
 ────────────────────────────────       ──────────────────────────────────────────
-1. ジョブ ID を採番する                  4. Prepare   ログの相関キーを ctx に載せる
-2. queued を記録する（Store.Save）       5. Begin     再配信ガード＋running の記録
-3. Cloud Tasks へ投入する                6. Validate  入力の検証（失敗は Permanent）
-   → 202 と Location: /jobs/{jobID}      7. Run       本体（Timeout はここだけ）
-                                         8. Finish    結末の記録と通知（切り離した ctx）
+1. Mint the job ID                     4. Prepare   put log correlation keys on ctx
+2. Record queued (Store.Save)          5. Begin     redelivery guard + record running
+3. Enqueue to Cloud Tasks              6. Validate  check the input (failure is Permanent)
+   → 202, Location: /jobs/{jobID}      7. Run       the body (the only place Timeout applies)
+                                       8. Finish    record the outcome, notify (detached ctx)
 ```
 
-| 段 | 決定 | 理由 |
+| Step | Decision | Reason |
 |---|---|---|
-| 2 → 3 の順 | **queued を書いてから投入する** | 逆順だと、ワーカーが書いた running を遅れてきた queued が上書きする。投入の失敗時は queued を取り消す |
-| 5 | `Recorder.Begin` を使う。前回の記録を 1 回読んで「完了済みなら打ち切り、未完了なら running を記録」を行う | `AlreadySucceeded` と `Record` を分けると、その間に別の配信が割り込む |
-| 5 の失敗 | **状態を読めなければ実行しない**。通知先があれば記録なしの通知を出し、エラーを返す | 「未完了」に倒すと完了済みを作り直し、「完了済み」に倒すと未完了が ACK されて二度と走らない。どちらにも倒さず人に知らせる |
-| 5 → 6 の順 | Begin を検証より前に置く | 全試行が Attempts に載り、検証で落ちたジョブも running を経由して failed に至る |
-| 6 | 配り直しても直らない失敗（入力不正、上限超過、参照先が無い）は `worker.Permanent` に包む | 包まないと 500 として再配信され、同じ失敗通知が 2 通届く。`max_attempts = 1` でも配線しておく。上げたときに直す場所を探さなくて済む |
-| 7 | 実行時間の上限は `Lifecycle.Timeout`（`PIPELINE_TIMEOUT`）で Run にだけ掛ける | 呼び出し元の ctx に掛けると、打ち切られた直後の Finish まで期限切れの ctx で走る。値の大小関係（三段）はインフラ規約 |
-| 7 の panic | ライブラリが回復して `worker.ErrPanicked` として Finish へ渡す | アプリで recover を書かない。書き忘れる場所を残さない |
-| 8 | 成功も失敗も同じ Finish で、記録 → 通知の順 | 記録できていないジョブの成功を人に知らせない |
-| 8 の ctx | ライブラリが `context.WithoutCancel` で切り離し、30 秒の上限を与える | 打ち切りこそが終端の理由である場面では、元の ctx は既に Done |
-| 8 の失敗の扱い | Finish は cause をそのまま返す。Permanent なら 2xx で打ち切り、それ以外は 500 で再配信 | 記録と通知は済んでいるので、利用者から見た結果は変わらない |
+| 2 → 3 | **Record queued, then enqueue** | The other way round, the late queued overwrites the running the worker wrote. If enqueueing fails, undo queued |
+| 5 | Use `Recorder.Begin`: read the previous record once, stop if it already succeeded, otherwise record running | With `AlreadySucceeded` and `Record` as separate calls, another delivery can slip in between |
+| 5 fails | **If the state cannot be read, do not run.** Notify without a record if a notifier exists, and return the error | Falling to "unfinished" rebuilds finished jobs; falling to "finished" ACKs an unfinished job that never runs again. Fall to neither and tell a person |
+| 5 → 6 | Begin before validation | Every attempt shows up in Attempts, and a job rejected by validation still goes through running to failed |
+| 6 | `Lifecycle` wraps a `Validate` failure in `worker.Permanent` itself. A failure inside Run that redelivery cannot fix (a missing reference, a limit exceeded) is wrapped by the app | Unwrapped, it becomes a 500, is redelivered, and the same failure is notified twice. Wire it even with `max_attempts = 1`, so nothing has to be hunted down when the limit is raised |
+| 7 | The run-time limit is `Lifecycle.Timeout` (`PIPELINE_TIMEOUT`), applied to Run only | Applied to the caller's ctx, the Finish right after the cut-off would also run on an expired ctx. If the library Run calls already bounds its own run, do not set it twice (adk-review leaves it to `go-review-kit`'s `pipeline.WithRunTimeout`) |
+| 7, the ladder | **`PIPELINE_TIMEOUT` < `TASK_DISPATCH_DEADLINE` ≤ the Cloud Run request timeout.** The app checks the first inequality at startup and rejects equality and "unlimited"; neither value has a default. The second is checked on the infrastructure side | **The app has to give up first.** If Cloud Tasks cuts the request, the process stops mid-job, neither the failure record nor the notification runs, nothing is redelivered with `max_attempts = 1`, and the job stays running forever. No defaults because the ladder is the deployment's decision: an app-side default puts the number in two places and lets a missing setting run on a value nobody chose |
+| 7, panic | The library recovers it and hands `worker.ErrPanicked` to Finish | No `recover` in the app, so there is no place to forget one |
+| 8 | Success and failure go through the same Finish, record then notify | Do not tell a person about a success that was not recorded |
+| 8, ctx | The library detaches it with `context.WithoutCancel` and bounds it (`DefaultFinishTimeout`, 30 seconds) | When the cut-off is the reason for ending, the original ctx is already done |
+| 8, on failure | Finish returns the cause as is: Permanent stops with 2xx, anything else is a 500 and redelivered | Recording and notification are done, so what the user sees does not change |
 
-Finish が呼ばれないのは、Begin が「完了済み」か「読めない」を返したときだけです。
+Finish is not called only when Begin returns "already succeeded" or "cannot read".
 
-### 2.2 ペイロード
+### 2.2 Payload
 
-| 項目 | 決定 |
+| Item | Decision |
 |---|---|
-| 型 | 投入側（`gcp-kit/tasks.Enqueuer[T]`）と受信側（`worker.Handler[T]`）で同じ `domain.Task` を共有する。契約は型で、JSON の写しを 2 箇所に持たない |
-| `job_id` | 必須。GCS のパスと Firestore のドキュメント ID になるので、`go-utils/jobid` で検証してから使う |
-| `command` | ジョブの種別。コマンドが 1 つしか無いアプリでも持つ。状態の記録と一覧の絞り込み（`?kind=`）がこれを読む |
-| 大きな入力 | ペイロードに載せず、先に保存してから ID だけを渡す（Cloud Tasks の 1MB 上限。台本・レシピ） |
-| 受け口 | `POST /tasks/<動詞>`。パスは `internal/domain/routes.go` の定数 1 箇所で持ち、投入側と受信側の両方がそれを読む |
+| Type | The enqueuer (`gcp-kit/tasks.Enqueuer[T]`) and the receiver (`worker.Handler[T]`) share the same `domain.Task`. The contract is the type; no JSON copy in two places |
+| `job_id` | Required. It becomes a GCS path and a Firestore document ID, so validate it with `go-utils/jobid` before use |
+| `command` | The kind of job. Present even in an app with one command; status records and list filters (`?kind=`) read it |
+| Large inputs | Not in the payload. Save first and pass only the ID (the 1 MB Cloud Tasks limit; scripts, recipes) |
+| Endpoint | `POST /tasks/<verb>`. The path is one constant in `internal/domain/routes.go`, read by both the enqueuer and the receiver |
 
-### 2.3 タスク名（重複排除）
+### 2.3 Task names (deduplication)
 
-決定的なタスク名（`EnqueueWithName` / `WithTaskID`）を付けるのは、**同じ名前で届いた 2 通目が
-「同じ仕事」であるとき**だけです。Cloud Tasks の重複排除は完了後もしばらく効き続けるので、
-名前が同じなら投げ直しは `ALREADY_EXISTS` として黙って捨てられます。
+Give a task a deterministic name (`EnqueueWithName` / `WithTaskID`) only **when a second message with
+the same name is "the same work"**. Cloud Tasks keeps deduplicating for a while after completion, so a
+re-submission under the same name is silently discarded as `ALREADY_EXISTS`.
 
-- 付ける: 同じジョブを継続するタスク（カット単位の継続生成）。二重に走らせたくない。
-- 付けない（または投入時刻を名前に含める）: 作り直し・再生成。投げ直しが正しい操作。
+- Name it: tasks that continue the same job (per-cut continuation). Running them twice is wrong.
+- Do not name it (or put the submission time in the name): rebuilds and regenerations. Re-submitting is
+  the correct operation.
 
-「対象だけを名前にする」と、作り直しの投入が前回の完了済みタスクに吸われます。
-ap-story がこれを踏んで、まとめてよい重複だけに範囲を絞りました。
+Naming a task after its target alone lets a rebuild be absorbed by the previous, completed task.
+ap-story hit this and narrowed naming to the duplicates that may be collapsed.
 
-### 2.4 状態の保存先
+### 2.4 Where state is kept
 
-Firestore（`gcp-kit/jobstatus`）と GCS（`go-job-kit/jobstatus`）の 2 つを許します。
-`Recorder` の形（`Begin` / `Record`）は同じで、Lifecycle からは区別しません。
-どちらを選ぶかの基準は一覧のコストで、原子性ではありません（GCS に残るのは、一覧が
-prefix 走査で足りる規模のアプリだけ）。
+Firestore (`gcp-kit/jobstatus`) and GCS (`go-job-kit/jobstatus`) are both allowed. `Recorder` has the
+same shape (`Begin` / `Record`) and Lifecycle does not tell them apart. How to choose is in
+[libraries.md](libraries.md#gcp-kit): by the cost of listing, not by atomicity.
 
-### 2.5 ファイルと名前
+### 2.5 Files and names
 
-| 対象 | 決定 |
+| Item | Decision |
 |---|---|
-| パッケージ | `internal/pipeline`。ワーカーの本体は adapters に置かない（adapters は外部サービスの境界だけ） |
-| 入口 | `pipeline.go` に `Runner` 型と `NewRunner` を置き、`Lifecycle` を組み立てて返す |
-| 工程の単位 | `Step`（`Name()` と `Execute(ctx, *Context)`）。工程間で引き継ぐ値は `Context` 1 つに載せ、引数で渡し回さない |
-| 工程のファイル | 1 工程 1 ファイル、`step_<名前>.go`。工程が多くパッケージが膨らむなら `step/` サブパッケージに移し、その中では接頭辞を付けない（`step/scene_split.go`） |
-| コマンド → 工程 | `planner.go` の `Planner.Plan(task) ([]Step, error)` だけが対応を持つ。1 コマンド 1 工程のアプリでも同じ形にする。`Runner.run` は返った列を順に実行するだけで、`command` で分岐しない。本体がライブラリ呼び出し 1 つで工程に分かれないアプリ（adk-review）は `Step` も `planner.go` も持たず、`Run` から直接呼ぶ |
-| 状態の記録 | `job_status.go`（`begin` / `markSucceeded` / `markFailed`） |
-| 通知 | `notify.go` |
-| 型名 | アプリ名を重ねない（`AdkReviewRunner` のようにしない）。パッケージ名（`internal/pipeline`）が既にアプリを言っている |
+| Package | `internal/pipeline`. The worker's body does not go in adapters (adapters are only the boundary with outside services) |
+| Entry | `pipeline.go` holds the `Runner` type and `NewRunner`, which assembles and returns the `Lifecycle` |
+| Unit of work | `Step` (`Name()` and `Execute(ctx, *Context)`). Values passed between steps ride on the one `Context`, not on arguments |
+| Step files | One step per file, `step_<name>.go`. When there are many steps and the package swells, move them to a `step/` subpackage without the prefix (`step/scene_split.go`) |
+| Command → steps | Only `planner.go`'s `Planner.Plan(task) ([]Step, error)` holds the mapping, even in an app with one step per command. `Runner.run` runs the returned steps in order and does not branch on `command`. An app whose body is one library call with no steps (adk-review) has neither `Step` nor `planner.go` and calls it directly from `Run` |
+| Status records | `job_status.go` (`begin` / `markSucceeded` / `markFailed`) |
+| Notification | Called from Finish after the record. No fixed file: most apps keep it in `pipeline.go`, ap-voice in `notifier.go` |
+| Type names | Do not repeat the app name (not `AdkReviewRunner`). The package (`internal/pipeline`) already names the app |
 
-工程の呼び名（Filter / Workflow / Step）は作った年代で違っていましたが、揃えました。
-接頭辞で種類が分かれば読めるという案もありましたが、grep が 3 通りになり、新しいアプリを
-起こす人がどれを写すか迷う点で、1 つに決めるほうが安く済みます。
+The steps used to be called differently depending on when the app was written (Filter / Workflow /
+Step); they were aligned on `Step`. Telling kinds apart by prefix was considered, but it makes grep take
+three forms and leaves whoever starts the next app unsure which to copy; one name is cheaper.
 
 ---
 
-## 3. 採らなかった案
+## 3. Rejected alternatives
 
-### 3.1 `worker.Handler` 側で実行時間を打ち切る
+### 3.1 Cutting the run time in `worker.Handler`
 
 ```text
-採用: Lifecycle.Timeout（Run にだけ掛ける）。Handler の WithTimeout は削除
-理由: Handler の上限は executor 全体に掛かるので、結末の記録まで期限切れの ctx で
-      走る。記録が要るのは打ち切られた場面なので、上限は記録より内側に無いと
-      いけない。2 箇所に上限があると、どちらが効いているかも読めない
-再検討の条件: なし
+Adopted: Lifecycle.Timeout (Run only). Handler's WithTimeout was removed
+Reason: the Handler's limit covers the whole executor, so recording the outcome also
+        runs on an expired ctx. The record is needed exactly when the run was cut
+        off, so the limit has to sit inside the record. With limits in two places it
+        is also unclear which one fired
+Revisit when: never
 ```
 
-### 3.2 状態を読めないときに「進む」
+### 3.2 "Going ahead" when the state cannot be read
 
 ```text
-採用: 進まない。通知して、エラーを返す
-理由: 1 アプリが「記録が読めないことを理由に止めるより二重実行のほうが回復可能」
-      として進んでいた。だが進むと、完了済みのジョブを再配信で作り直し、ガードが
-      防ぐはずの費用を自分で払う。読めない事態は稀で、人が投げ直せば済む
-再検討の条件: 二重実行の費用が無視できるアプリだけ。そのときは Begin の中で
-      決めて、規約の例外として書く
+Adopted: do not go ahead. Notify and return the error
+Reason: one app went ahead, arguing that running twice is easier to recover from
+        than stopping because the record could not be read. But going ahead rebuilds
+        finished jobs on redelivery and pays the very cost the guard exists to
+        prevent. Unreadable state is rare, and a person can resubmit
+Revisit when: only for an app whose double run costs nothing. Decide it inside
+        Begin and write it down as an exception to the convention
 ```
 
-### 3.3 `recordOutcome` をアプリごとに書く
+### 3.3 Writing `recordOutcome` per app
 
 ```text
-採用: Lifecycle.Finish に渡す。順序と ctx の切り離しはライブラリが持つ
-理由: 5 アプリが同じ 20 行を写しており、うち 3 つで成功パスの切り離しが漏れた。
-      写す限り、次に増えるアプリでも漏れる
-再検討の条件: なし
+Adopted: pass it to Lifecycle.Finish. The library owns the order and the detached ctx
+Reason: five apps had copied the same 20 lines, and three of them missed detaching
+        the success path. As long as it is copied, the next app will miss it too
+Revisit when: never
 ```
 
-### 3.4 `max_attempts` を 2 以上にする
+### 3.4 `max_attempts` of 2 or more
 
 ```text
-採用: 1（voice-queue だけ 2）
-理由: 再試行は「何が起きたか」を隠す。失敗はその場で記録と通知に残して、人が
-      投げ直す。2 にするなら Permanent の配線（2.1 の 6）が前提。規約は全アプリに配線を
-      求めているが、済んでいないアプリもあるので、上げる前に確かめる
-再検討の条件: 一時障害での損失が手作業の投げ直しより高くつくアプリが出たとき
+Adopted: 1 (AP Voice's queue alone is 2)
+Reason: retries hide what happened. A failure is left in the record and the
+        notification on the spot, and a person resubmits. Raising it presupposes the
+        Permanent wiring (2.1, step 6). The convention asks every app for it, but not
+        every app has finished, so check before raising
+Revisit when: an app appears where losses from transient failures cost more than
+        resubmitting by hand
 ```
 
 ---
 
-## 4. 規約から外れたルートの見つけ方
+## 4. Finding code that departs from the convention
 
 ```bash
-# Lifecycle を使わずに TaskExecutor を実装している
+# A TaskExecutor implemented without Lifecycle
 grep -rn 'func (.*) Execute(ctx context.Context' internal --include='*.go' | grep -v _test
-# アプリ側に残った recover / WithoutCancel（Lifecycle が持つので、Finish の経路に残っていれば二重）
-# 工程の途中で成果物を退避する保存（打ち切られた場面こそ残す価値がある下書き・部分保存）は例外
+# recover / WithoutCancel left in the app (Lifecycle owns them; on the Finish path they are duplicates)
+# Exception: saving an artifact mid-step (a draft or partial result worth keeping precisely when the run is cut off)
 grep -rn 'recover()\|WithoutCancel' internal/pipeline --include='*.go' | grep -v _test
-# 工程の型名が Step 以外の呼び名で定義されている（ライブラリ由来の Workflows などは対象外）
+# Step types defined under another name (library types such as Workflows do not count)
 grep -rn 'type \w*\(Filter\|Workflow\)\b' internal/pipeline --include='*.go' | grep -v _test
-# コマンド → 工程の対応が planner.go 以外にある（Runner.run の switch が疑わしい）
+# Command → steps mapping outside planner.go (a switch in Runner.run is suspect)
 grep -rn 'switch .*Command' internal/pipeline/pipeline.go
-# 投入と queued の記録の順序（記録の行番号が Enqueue より小さいこと。読んで判断する）
+# Order of enqueue and the queued record (the record's line must come before Enqueue; read and judge)
 grep -rn 'Enqueue(\|ecordQueued' internal/server/handlers --include='*.go' | grep -v _test
 ```
 
 ---
 
-## 更新履歴
+## Changelog
 
-- 2026-09-04: 初版。5 アプリのワーカー入口を突き合わせ、揃っていた順序（queued → 投入、
-  Begin → 検証 → 実行 → 記録）を `gcp-kit/worker.Lifecycle` に移して規約にした。
-  差があった 3 点（panic の回復、`Permanent` の配線、読めないときに進む方針）は
-  ライブラリと規約の側で 1 つに決めた。工程の呼び名（Filter / Workflow / Step）と
-  コマンド → 工程の置き場（`planner.go`）も 1 つに揃えた。
+- 2026-09-04: First version. The worker entry points of five apps were compared, and the order they
+  already shared (queued → enqueue; Begin → validate → run → record) moved into
+  `gcp-kit/worker.Lifecycle` and became the convention. The three points where they differed (panic
+  recovery, `Permanent` wiring, going ahead when the state cannot be read) were settled in the library
+  and the convention. The names of steps (Filter / Workflow / Step) and the home of the command → steps
+  mapping (`planner.go`) were aligned too.
+- 2026-11-10: Translated to English. Step 6 now says that `Lifecycle` wraps `Validate` failures itself.
+  The timeout ladder, enforced by all five apps, moved here from the application reference. The
+  `notify.go` file name was dropped, since no app uses it. adk-review's run limit is noted as living in
+  `go-review-kit`.
