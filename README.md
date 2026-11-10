@@ -1,45 +1,52 @@
 # public-docs
 
-公開・共有してよいドキュメントの置き場です。
+English | [日本語](README.ja.md)
 
-いまあるのは、個人開発のエコシステム（Go の公開ライブラリ群と、それを統合した Cloud Run 上の
-アプリケーション）についての**リファレンス**と、複数のリポジトリが揃えるべき**規約**です。
+A home for documentation that is fine to publish and share.
+
+What it holds today is the **reference** for a personal ecosystem (public Go libraries and the
+Cloud Run applications built on them) and the **conventions** several repositories have to agree on.
 
 ## Documents
 
-### リファレンス
+### Reference
 
 | Path | Description |
 | --- | --- |
-| [docs/libraries.md](docs/libraries.md) | 公開 Go ライブラリの境界の地図（担当範囲、隣との線引き、層の位置） |
-| [docs/applications.md](docs/applications.md) | アプリケーションと MCP サーバーのリファレンス |
+| [docs/libraries.md](docs/libraries.md) | Boundary map of the public Go libraries (what each one owns, where it stops, which layer it sits in) |
+| [docs/applications.md](docs/applications.md) | Reference for the applications and MCP servers |
 
-### 規約
-
-| Path | Description |
-| --- | --- |
-| [docs/url-naming-convention.md](docs/url-naming-convention.md) | Web アプリケーションの URL 命名規約（リソースの骨格、採らなかった案、既存アプリの寄せ方） |
-| [docs/worker-convention.md](docs/worker-convention.md) | Cloud Tasks ワーカーの規約（ジョブの一生の順序、ペイロード、タスク名、採らなかった案） |
-| [docs/app-readme-convention.md](docs/app-readme-convention.md) | アプリ README の規約（README と CLAUDE.md の役割分担、固定の骨格、書かないもの） |
-| [docs/library-readme-convention.md](docs/library-readme-convention.md) | ライブラリ README の規約（godoc / README / CLAUDE.md の三分割、見出しの語彙、書かないもの） |
-
-### 書き方
+### Conventions
 
 | Path | Description |
 | --- | --- |
-| [docs/documentation-guideline.md](docs/documentation-guideline.md) | このリポジトリに置くドキュメントの書き方（構成、決定の残し方、公開前チェック） |
+| [docs/url-naming-convention.md](docs/url-naming-convention.md) | URL naming for the web applications (the resource skeleton, rejected alternatives, how to find routes that drift) |
+| [docs/worker-convention.md](docs/worker-convention.md) | Cloud Tasks workers (the order of a job's life, payloads, task names, rejected alternatives) |
+| [docs/app-readme-convention.md](docs/app-readme-convention.md) | Application READMEs (README vs CLAUDE.md, the fixed skeleton, what not to write) |
+| [docs/library-readme-convention.md](docs/library-readme-convention.md) | Library READMEs (the godoc / README / CLAUDE.md split, heading vocabulary, what not to write, languages) |
 
-## 置くもの・置かないもの
+### Writing
 
-**迷ったら「複数のリポジトリから引かれるか」で決めます。** 1 つのリポジトリでしか使わない説明は、
-そこに置いたほうがコードと一緒に直せるぶん腐りません。使い方は各リポジトリの README、API は
-godoc（pkg.go.dev）、内部の設計判断は各リポジトリの CLAUDE.md が持ちます。
+| Path | Description |
+| --- | --- |
+| [docs/documentation-guideline.md](docs/documentation-guideline.md) | How documents in this repository are written (structure, recording decisions, pre-publication checks) |
 
-**公開リポジトリです。** 非公開のリポジトリ名、認証情報、個人情報は置きません。書き方の決まりと
-公開前のチェックリストは [documentation-guideline.md](docs/documentation-guideline.md) が持ちます。
+## What goes here and what does not
 
-新しい文書を足したら、上の表にも 1 行足してください。表と実ファイルが一致しているかは
-次で確かめられます。
+**When in doubt, ask whether several repositories refer to it.** An explanation only one repository
+uses stays fresher in that repository, where it is fixed together with the code. Usage belongs in each
+repository's README, the API in godoc (pkg.go.dev), and internal design decisions in each repository's
+CLAUDE.md.
+
+**This is a public repository.** No private repository names, credentials or personal information.
+The writing rules and the pre-publication checklist are in
+[documentation-guideline.md](docs/documentation-guideline.md).
+
+The documents under `docs/` are written in English. Only this README has a Japanese copy
+(`README.ja.md`), changed in the same commit as `README.md`.
+
+When you add a document, add a row to the tables above as well. This checks that the tables and
+the files match:
 
 ```bash
 diff <(grep -o 'docs/[a-z-]*\.md' README.md | sort -u) <(ls -1 docs/ | sed 's|^|docs/|' | sort)
@@ -47,5 +54,5 @@ diff <(grep -o 'docs/[a-z-]*\.md' README.md | sort -u) <(ls -1 docs/ | sed 's|^|
 
 ## License
 
-ドキュメントの著作権は作成者に帰属します。
-利用条件を明確にする必要がある場合は、個別のライセンスファイルまたは各ドキュメント内に記載してください。
+Copyright of the documents belongs to the author.
+Where terms of use need to be stated, put them in a separate license file or in the document itself.

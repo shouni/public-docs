@@ -1,93 +1,104 @@
-# ドキュメント作成ガイドライン
+# Documentation Guideline
 
-このリポジトリに置くドキュメントの書き方をまとめる。
-公開・共有される前提のため、読み手は「文脈を知らない外部の人」を想定する。
+How documents in this repository are written.
+They are meant to be published and shared, so the assumed reader is an outsider who does not know the
+context.
 
-## 1. 1 ファイル 1 テーマ
+## 1. One theme per file
 
-1 つのファイルで扱うテーマは 1 つにする。
-「設計」と「運用手順」が混ざると、片方だけ更新されて内容がずれていく。
-分量が増えたら分割し、相互にリンクを張る。
+A file covers one theme.
+When design and operating procedures are mixed, one half gets updated and the content drifts.
+When a file grows, split it and link the parts to each other.
 
-## 2. 冒頭に「何のための文書か」を書く
+## 2. Open with what the document is for
 
-タイトルの直後に、2〜3 行で次を書く。
+Right after the title, in two or three lines, say:
 
-- この文書が答えている問い
-- 想定する読み手
-- 読み終えたときに分かること
+- the question this document answers,
+- who it is for,
+- what the reader will know at the end.
 
-目次から書き始めない。読み手は目次ではなく結論を探している。
+Do not open with a table of contents. Readers look for the conclusion, not the contents.
 
-## 3. 決定は理由とセットで書く
+## 3. Record decisions with their reasons
 
-設計資料で最も腐りにくいのは「なぜそう決めたか」の部分である。
-選んだ案だけでなく、**採らなかった案とその理由**を残す。
+The part of a design document that rots least is why it was decided.
+Record not only the adopted option but **the rejected options and why**.
 
 ```text
-採用: A 方式
-理由: B 方式は初期実装は軽いが、後から C の制約を満たせなくなる
-再検討の条件: C の制約が外れたとき
+Adopted: approach A
+Reason: approach B is lighter to build at first, but later cannot meet constraint C
+Revisit when: constraint C goes away
 ```
 
-「再検討の条件」を書いておくと、あとから読んだ人が
-その決定を覆してよいかどうかを自分で判断できる。
+With "revisit when" written down, a later reader can judge for themselves whether the decision may be
+overturned.
 
-## 4. 具体名を書きすぎない
+## 4. Do not name too much
 
-公開リポジトリなので、次は書かない。
+This is a public repository, so it does not contain:
 
-- 非公開リポジトリ名、内部ホスト名、プロジェクト ID
-- 認証情報、トークン、個人情報
-- 特定個人の評価に読める記述
+- private repository names (former names included), internal host names, project IDs,
+- credentials, tokens, personal information,
+- anything that reads as an evaluation of a specific person.
 
-具体例が必要な場合は、役割が分かる一般名（`api-server`、`batch-worker` など）に置き換える。
+When a concrete example is needed, use a generic name that conveys the role (`api-server`,
+`batch-worker`, "the music service", "the infrastructure repository").
 
-## 5. 一覧を手で書かない
+## 5. Do not copy lists by hand
 
-ファイル一覧やコード上の項目一覧をドキュメントに転記すると、必ず実体とずれる。
-一覧そのものではなく、**一覧の求め方**を書く。
+Lists of files or code items copied into a document always drift from the real thing.
+Write **how to get the list** instead of the list.
 
 ```bash
-# 例: 設定項目の一覧は grep で得る
+# Example: get the list of settings with grep
 grep -rn "config." ./src
 ```
 
-## 6. 図は仕組みが分かるときだけ描く
+## 6. Draw a diagram only when it shows the mechanism
 
-見た目を整えるためだけの図は入れない。
-描くなら、文章で説明すると長くなる「関係」や「順序」を対象にする。
-Markdown 中では Mermaid を使う。
+No diagrams just for looks.
+Draw relations or orders that would take long to explain in prose. In Markdown, use Mermaid.
 
 ```mermaid
 flowchart LR
-    A[入力] --> B{検証}
-    B -->|OK| C[処理]
-    B -->|NG| D[エラー返却]
+    A[Input] --> B{Validate}
+    B -->|OK| C[Process]
+    B -->|NG| D[Return error]
 ```
 
-## 7. 更新の跡を残す
+## 7. Leave a trail of changes
 
-差し替え時は、次のいずれかで変更内容を追えるようにする。
+When replacing content, make the change traceable by either:
 
-- コミットメッセージに何を変えたかを書く
-- 文書末尾に更新履歴を置く（大きな方針転換があった場合のみ）
+- saying what changed in the commit message, or
+- keeping a changelog at the end of the document (only for major changes of direction).
 
-日付は「先月」「最近」ではなく `2026-08-31` のような絶対日付で書く。
-相対表現は、読まれる時点では必ず意味が変わっている。
+Write dates as absolute dates such as `2026-08-31`, not "last month" or "recently". A relative
+expression has always changed meaning by the time it is read.
 
-## 8. ファイル名
+## 8. File names
 
-- 英小文字とハイフンのみ（`documentation-guideline.md`）
-- 日本語・空白・大文字は使わない（URL やコマンドラインで扱いにくい）
-- 内容が変わったらファイル名も変える。中身だけ差し替えると、リンク先の期待とずれる
+- Lower-case English letters and hyphens only (`documentation-guideline.md`).
+- No Japanese, spaces or upper case (awkward in URLs and on the command line).
+- When the content changes, change the file name too. Replacing only the content breaks what the links
+  promise.
 
-## チェックリスト
+## 9. Language
 
-公開前に確認する。
+Documents under `docs/` are written in English and have no Japanese copy. The top-level `README.md` has
+a Japanese copy, `README.ja.md`, changed in the same commit. Japanese appears in `docs/` only as quoted
+data (a UI label, a prompt fragment), with an English gloss. The rule for the other repositories is in
+[library-readme-convention.md §2.7](library-readme-convention.md#27-languages).
 
-- [ ] 冒頭に目的と想定読者が書かれている
-- [ ] 設計判断に理由が添えられている
-- [ ] 非公開の固有名詞・認証情報が含まれていない
-- [ ] 手で書き写した一覧が含まれていない
-- [ ] 相対日付を使っていない
+## Checklist
+
+Check before publishing:
+
+- [ ] The purpose and the intended reader are stated at the top
+- [ ] Design decisions come with their reasons
+- [ ] No private names or credentials
+- [ ] No lists copied by hand
+- [ ] No relative dates
+- [ ] Relative links and anchors resolve
+- [ ] `README.md` and `README.ja.md` were changed together

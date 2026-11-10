@@ -1,217 +1,248 @@
-# ライブラリ README 規約
+# Library README Convention
 
-公開 Go ライブラリの README をどう構成するかを決める文書です。
-想定する読み手は、新しいライブラリを起こす人と、既存ライブラリの README を直す人。
-読み終えると「README に何を書き、何を godoc へ任せ、何を CLAUDE.md へ送るか」を機械的に決められ、
-既存の README のどこが規約から外れているかを自分で判定できます。
+Decides how the READMEs of the public Go libraries are structured, and which languages the
+repositories are written in.
+It is for people starting a new library and people fixing an existing library's README.
+After reading it you can decide mechanically what goes in the README, what is left to godoc and what is
+sent to CLAUDE.md, and judge for yourself where an existing README departs from the convention.
 
-アプリ（Cloud Run 上で web / worker として動くもの）の README は
-[app-readme-convention.md](app-readme-convention.md) が持ちます。**骨格を固定しないなど、意図的に別の規約です**
-（理由は §3.1）。
-
----
-
-## 1. なぜ揃えるのか
-
-19 本のライブラリを並べたとき、README は 93 行から 595 行まで開いていました。
-分量そのものは題材の差ですが、その中に 3 つの腐り方が混ざっていました。
-
-- **godoc の写しがある。** ある README は構造体のフィールド表をそのまま持っており、
-  pkg.go.dev が同じものを出します。フィールドを 1 つ足すと、直す場所が 2 箇所になります。
-- **兄弟ライブラリ間で表が重複している。** 近い立ち位置の 2 本が、同じ表を 52 行ぶん
-  それぞれ持っていました。片方を直しても、もう片方は古いまま残ります。
-- **同じ節に 3 通りの名前がある。** 特徴の節は「提供機能」「特徴」「設計の要点」、
-  使い方は「使い方」「クイックスタート」、構成は「プロジェクトレイアウト」「パッケージ構成」
-  「プロジェクト構成」。読み手は毎回どれが目当ての節かを読んで判断します。
-
-そして、正しい線引きは 1 本だけが持っていました。gcp-kit の CLAUDE.md にある
-「README が載せるのは、知らないと高くつくことだけ。シグネチャは godoc、理由は CLAUDE.md」
-という規則で、残り 18 本はそれを知りません。1 箇所にあるルールは、写されないかぎり広がりません。
+READMEs of applications (web / worker services on Cloud Run) are covered by
+[app-readme-convention.md](app-readme-convention.md). **It is a deliberately different convention**,
+with a fixed skeleton (why: 3.1). The language rule in 2.7 applies to applications too.
 
 ---
 
-## 2. 規約
+## 1. Why align them
 
-### 2.1 三分割
+When the 19 libraries of 2026-09-04 were lined up, their READMEs ranged from 93 to 595 lines. Length
+itself is down to the subject, but three kinds of rot were mixed in.
 
-**これが規約の本体です。** 骨格より先にここを守ってください。
+- **Copies of godoc.** One README carried a struct's field table that pkg.go.dev shows anyway. Add a
+  field and there are two places to fix.
+- **Tables duplicated between sibling libraries.** Two libraries with similar roles each held the same
+  52-line table. Fix one and the other stays stale.
+- **Three names for the same section.** Features were "Features", "Characteristics" or "Design
+  highlights"; usage was "Usage" or "Quick start"; layout was "Project layout", "Package structure" or
+  "Project structure". Readers had to read each time to find the section they wanted.
 
-| 置き場 | 何を書くか | 読み手が来る理由 |
+And only one library had the right line: gcp-kit's CLAUDE.md said "the README carries only what is
+expensive not to know; signatures go to godoc, reasons to CLAUDE.md". The other 18 did not know it. A
+rule in one place does not spread unless it is copied.
+
+---
+
+## 2. Convention
+
+### 2.1 The three-way split
+
+**This is the heart of the convention.** Keep it before the skeleton.
+
+| Where | What it says | Why the reader comes |
 |---|---|---|
-| godoc | シグネチャ、引数、戻り値、ゼロ値の意味、エラーの一覧 | 呼び方を確かめたい |
-| README | 担当範囲と非担当範囲、最初の 1 本を書くための最小のコード、godoc へ辿り着く前に効く罠 | 使うかどうかを決めたい |
-| CLAUDE.md | なぜその境界にしたか、採らなかった案、踏んだ穴 | 中を変えたい |
+| godoc | Signatures, arguments, return values, the meaning of zero values, the list of errors | To check how to call it |
+| README | What it owns and what it does not, the minimal code for the first call, traps that bite before the reader gets to godoc | To decide whether to use it |
+| CLAUDE.md | Why the boundary is where it is, rejected alternatives, holes stepped in | To change it |
 
-判定は 1 つです。**その文が pkg.go.dev を開けば分かるなら、README には書きません。**
-フィールド表・メソッド表・エラー定数の一覧がこれに当たります。
+There is one test: **if a sentence can be learned by opening pkg.go.dev, it does not go in the README.**
+Field tables, method tables and lists of error constants are the usual cases.
 
-**「知らないと高くつく罠」も、この判定より先には来ません。** 罠であっても、対象のシンボルの
-godoc を開けば書いてあるなら README には要りません。README に残す価値があるのは、
-**どのシンボルを開けばいいか分からない段階で効く罠**だけです。
+**"Traps that are expensive not to know" do not come before this test.** If the trap is written in the
+godoc of the symbol concerned, the README does not need it. A trap earns its place in the README only
+when it **bites before the reader knows which symbol to open**.
 
-- 残す: 「リトライはメソッドを見ないので、非冪等な送信は二重実行になり得る」。採否そのものを
-  左右し、`Post` の godoc を開く前に知る必要があります。
-- 落とす: 「`Begin` は状態を読めなかったときどちらにも倒さない」。`Begin` を使う人の話で、
-  その関数を開けば書いてあります。
+- Keep: "retry does not look at the method, so a non-idempotent send can run twice". It decides
+  whether to adopt the library at all, and has to be known before opening `Post`'s godoc.
+- Drop: "`Begin` does not fall either way when it cannot read the state". That concerns people who use
+  `Begin`, and it is written where `Begin` is.
 
-見分け方は「この罠を踏む人は、踏む前に対象の godoc を開いているか」です。開いているなら
-そこに書けば足ります。
+To tell them apart, ask: "has the person who steps on this trap already opened the godoc of its
+target?" If so, writing it there is enough.
 
-**規則に 1 文添えた理由は README に置いて構いません**（「〜だから空でもエラーにしない」）。
-それが「知らないと高くつくこと」の説明そのものだからです。CLAUDE.md へ送るのは、複数の
-ファイルにまたがる不変条件と、採らなかった案です。1 つの関数で完結する理由は doc コメントが
-最も近い置き場で、README からはそこを指すだけで足ります。
+**A one-sentence reason attached to a rule may stay in the README** ("…so an empty value is not an
+error"), because it is the explanation of what is expensive not to know. CLAUDE.md gets invariants that
+span several files and rejected alternatives. A reason confined to one function is closest to its doc
+comment, and the README only points there.
 
-CLAUDE.md が無いライブラリは、その 2 つを書く必要がまだ無いということです。**書く必要が
-出てきたときに置いてください**（README に溜め始めたら、それが合図です）。
+A library without a CLAUDE.md simply has nothing of those two kinds yet. **Add one when it is needed**
+(starting to pile them up in the README is the signal).
 
-### 2.2 骨格
+### 2.2 Skeleton
 
-**見出しの順序と有無は題材に合わせて構いません。** ライブラリはパッケージ 1 つのものから
-8 つのものまであり、同じ形を強いると中身のほうが歪みます。固定するのは語彙（2.3）と、
-次の 3 つが必ずあることだけです。
+**The order and presence of headings may follow the subject.** Libraries range from one package to
+eight, and forcing one shape would bend the content instead. Fixed are only the vocabulary (2.3) and
+the presence of these three:
 
 ```markdown
-# <絵文字> <ライブラリ名>
-<バッジ>
+# <emoji> <library name>
+<badges>
 
-## 🚀 概要 (About) - <一行で、何を引き受けるか>   ← 必須
-（パッケージが 2 つ以上なら）## 📦 パッケージ構成
-## 🚦 使い方 (Usage)                              ← 必須
-（godoc に置けない主題があれば）## <その主題>
-## 🤝 依存関係 (Dependencies)
-## 📜 ライセンス (License)                        ← 必須
+English | [日本語](README.ja.md)
+
+## 🚀 About - <one line: what it takes on>       ← required
+(two or more packages) ## 📦 Package Structure
+## 🚦 Usage                                      ← required
+(a subject that cannot live in godoc) ## <that subject>
+## 🤝 Dependencies
+## 📜 License                                    ← required
 ```
 
-概要の 1 行には、**何を引き受けないか**も入れてください。「保存は呼び出し側」「AI も
-クラウドも知らない」のように非担当範囲まで言うと、読み手は数行で採否を判断できます。
+Put **what it does not take on** into the one line of About as well. Saying the non-goals ("storage
+is the caller's", "knows neither AI nor the cloud") lets a reader decide in a few lines.
 
-**主題の節は例外的です。** 2.1 の判定を通すと、罠のほとんどは godoc へ行きます。節を立てる価値が
-あるのは、godoc の 1 シンボルに置けないもの——複数の関数を並べた比較表、利用者が手で書く
-ファイルの書式、ライブラリが保証する範囲の一覧——だけです。
+**Subject sections are the exception.** Through the test in 2.1, most traps go to godoc. A section is
+worth it only for what cannot sit on one godoc symbol: a comparison table across several functions,
+the format of a file the user writes by hand, the list of what the library guarantees.
 
-### 2.3 見出しの語彙
+### 2.3 Heading vocabulary
 
-同じ役割の節に別の名前を付けません。左を使い、右は使いません。
-見出しは `## <絵文字> 日本語 (English)` の形に揃えます（英語だけの見出しにしない）。
+Sections with the same role do not get different names. Use the left column, not the right.
+Headings take the form `## <emoji> <English>`. In `README.ja.md` the heading is translated and the
+English kept in parentheses (`## 🚀 概要 (About)`).
 
-| 使う | 使わない |
+| Use | Do not use |
 |---|---|
-| `## 🚀 概要 (About) - <一行>` | — |
-| `## ✨ 提供機能 (Features)` | 特徴、設計の要点、コア・コンセプト、Core Features |
-| `## 🚦 使い方 (Usage)` | クイックスタート、Usage 単独 |
-| `## 📦 パッケージ構成 (Package Structure)` | プロジェクトレイアウト、プロジェクト構成、プロジェクト構造、Project Structure、Packages |
-| `## 🤝 依存関係 (Dependencies)` | 主な依存関係 |
-| `## 📜 ライセンス (License)` | — |
+| `## 🚀 About - <one line>` | — |
+| `## ✨ Features` | Characteristics, Design highlights, Core concepts, Core Features |
+| `## 🚦 Usage` | Quick start, Getting started |
+| `## 📦 Package Structure` | Project layout, Project structure, Packages |
+| `## 🤝 Dependencies` | Main dependencies |
+| `## 📜 License` | — |
 
-「設計の要点」「コア・コンセプト」を使わないのは、そこに書かれるものがたいてい CLAUDE.md の
-中身だからです。提供機能として書けないなら、それは理由であって機能ではありません。
+"Design highlights" and "Core concepts" are not used because what goes under them is usually
+CLAUDE.md material. If it cannot be written as a feature, it is a reason, not a feature.
 
-**インストールの節は置きません。** `go get <モジュールパス>` はパスから自明で、1 節を割く
-情報量がありません。必要なら使い方の冒頭に 1 行として置きます。
+**No installation section.** `go get <module path>` is obvious from the path and not worth a section.
+If needed, put it as one line at the top of Usage.
 
-### 2.4 コード例
+### 2.4 Code examples
 
-**README のコード例は「最初の 1 本」だけです。** 構築して 1 回呼ぶまでを 1 つ載せ、
-分岐や応用は godoc の `Example` 関数へ置きます。`Example` は `go test` が実行するので、
-API が変わればコンパイルが落ちます。README のコードブロックは誰も検査しません。
+**The README carries only the first example.** One example that builds and makes one call; branches
+and variations go to godoc `Example` functions. `go test` runs those, so they stop compiling when the
+API changes. Nobody checks a README code block.
 
-**移し先を作ってから消してください。** `Example` を書かずに README の例を削ると、その例は
-どこにも無くなります（実際に 1 つ失いました）。`Example` を書けない事情があるなら、
-README に残すほうがましです。
+**Create the destination before deleting.** Delete a README example without writing an `Example` and
+it is gone (one was actually lost this way). If an `Example` cannot be written, keeping it in the
+README is better.
 
-### 2.5 書かないもの
+### 2.5 What not to write
 
-| 書かない | 理由 | 代わりに |
+| Do not write | Reason | Instead |
 |---|---|---|
-| フィールド表・メソッド表・エラー定数の一覧 | godoc が同じものを出す。足したときに直す場所が 2 つになる | godoc |
-| 兄弟ライブラリと同じ表 | 片方だけ直る | 一方に置き、他方からリンクする |
-| 利用者リポジトリの列挙 | 腐る。公開文書に非公開名が載る | 求め方（`grep`）を書く |
-| 利用者数・バージョン番号 | 腐る | [libraries.md](libraries.md) |
-| 設計の理由、採らなかった案 | 使うかどうかの判断には要らない | CLAUDE.md |
-| 相対日付 | 読まれる時点で意味が変わる | `2026-09-04` の形 |
+| Field tables, method tables, lists of error constants | godoc shows the same; adding one means two places to fix | godoc |
+| The same table as a sibling library | Only one gets fixed | Keep it in one and link from the other (2.6) |
+| A list of consuming repositories | It rots, and puts private names in a public document | How to find them (`grep`) |
+| User counts, version numbers | They rot | [libraries.md](libraries.md) |
+| Design reasons, rejected alternatives | Not needed to decide whether to use it | CLAUDE.md |
+| Relative dates | See [documentation-guideline.md](documentation-guideline.md#7-leave-a-trail-of-changes) | Absolute dates (`2026-09-04`) |
 
-### 2.6 兄弟ライブラリ
+### 2.6 Sibling libraries
 
-担当範囲が近いライブラリが 2 本あるときは、**使い分けの表を一方にだけ置き、
-他方からはリンクします。** 両方に置くと必ず片方が古くなります。
-どちらに置くかは、後から来たほう（読み手が「既存とどう違うのか」を知りたいほう）です。
+When two libraries have neighbouring roles, **put the table that tells them apart in one of them and
+link from the other.** Kept in both, one always goes stale. It goes in the later one, the one whose
+readers want to know how it differs from what already exists.
 
----
+### 2.7 Languages
 
-## 3. 採らなかった案
+The repositories (libraries and applications alike) are written in English, with a Japanese copy of the
+README only.
 
-### 3.1 アプリと同じ骨格を強いる
-
-```text
-採用: 語彙だけ固定し、見出しの構成は題材に任せる
-理由: アプリは 5 本ともほぼ同じ形（web/worker の 2 面、Cloud Tasks、環境変数）なので
-      骨格が固定できた。ライブラリはパッケージ 1 つのものと 8 つのものが混在しており、
-      同じ節立てを強いると、無い節を埋めるために中身を作ることになる
-再検討の条件: なし
-```
-
-### 3.2 README からコード例を全部 godoc へ移す
-
-```text
-採用: 「最初の 1 本」だけ README に残す
-理由: GitHub で最初に開かれるのは README で、そこに動く例が 1 つも無いと
-      採否の判断に pkg.go.dev への往復が要る。検査されない例が増えることが
-      問題なので、増やさなければよい
-再検討の条件: なし
-```
-
-### 3.3 README に日本語と英語を併記する
-
-```text
-採用: 日本語のみ（現状維持）
-理由: 併記は分量が倍になり、片方だけ直る形が確実に生まれる。読み手は
-      いまのところ日本語で足りている
-再検討の条件: 外部からの利用が実際に発生したとき。そのときは英語へ切り替える
-      （併記ではなく）
-```
+| What | Language |
+|---|---|
+| `README.md` | English |
+| `README.ja.md` | Japanese copy of `README.md`, same structure, **changed in the same commit**. Both carry a language switch under the badges: `English \| [日本語](README.ja.md)` in `README.md`, `[English](README.md) \| 日本語` in `README.ja.md` |
+| `CLAUDE.md` | English, with no Japanese copy |
+| Code comments, doc comments, error and log messages | English |
+| Test names and subtest names | English |
+| Data | Japanese stays only where it is the data itself: prompts, end-user UI text, fixtures, and test case names that are themselves input data |
 
 ---
 
-## 4. 規約から外れた README の見つけ方
+## 3. Rejected alternatives
+
+### 3.1 Forcing the application skeleton on libraries
+
+```text
+Adopted: fix only the vocabulary and leave the section layout to the subject
+Reason: the applications all have nearly the same shape (web/worker sides, Cloud
+        Tasks, environment variables), so their skeleton could be fixed. Libraries
+        mix one-package and eight-package modules, and forcing one section layout
+        would mean inventing content to fill sections that do not exist
+Revisit when: never
+```
+
+### 3.2 Moving every code example out of the README into godoc
+
+```text
+Adopted: keep only the first example in the README
+Reason: the README is what GitHub opens first. Without one working example there,
+        deciding whether to adopt the library takes a round trip to pkg.go.dev. The
+        problem is unchecked examples multiplying, so do not multiply them
+Revisit when: never
+```
+
+### 3.3 Japanese only, or Japanese and English side by side in one README
+
+```text
+Adopted: English README.md and a Japanese README.ja.md, as two files changed in the
+        same commit (since 2026-11-09)
+Reason: the repositories moved to English on 2026-11-09/10. Mixing both languages in
+        one file doubles every section, which is why it was rejected on 2026-09-04:
+        one half gets fixed and the other does not. Two whole files keep each one
+        readable from top to bottom; the risk of one going stale is handled by
+        changing them in the same commit
+Revisit when: none recorded
+```
+
+---
+
+## 4. Finding READMEs that depart from the convention
 
 ```bash
-# 見出しの語彙が揃っているか
-grep -n '^## ' README.md
-# godoc の写し（フィールド表・メソッド表）が無いか
-# ※ パッケージ構成表や、利用者が手で書くファイルの項目定義も当たる。表の中身を見て判断する
+# Heading vocabulary
+grep -n '^## ' README.md README.ja.md
+# The language switch is in both files
+grep -c 'README.ja.md' README.md; grep -c '(README.md)' README.ja.md
+# Japanese left in README.md (outside quoted data)
+perl -CSD -ne 'print "$.: $_" if /[\p{Hiragana}\p{Katakana}\p{Han}]/' README.md
+# The two copies have the same number of sections
+diff <(grep -c '^## ' README.md) <(grep -c '^## ' README.ja.md)
+# Copies of godoc (field tables, method tables)
+# Note: also matches package tables and field definitions of files the user writes by hand; read the table to judge
 grep -n '^| `' README.md
-# 長い理由（採らなかった案・過去の経緯）が README に残っていないか
-# ※ 規則に 1 文添えた理由は正常なので、この grep は当たりが多い。読んで判断する
-grep -n '以前は\|採らなかった' README.md
-# 利用者数・利用者リポジトリの列挙が書かれていないか
-# ※「利用者の入力」のような普通の語は当たるので、読んで判断する。移行告知の版番号は残してよい
-grep -n '[0-9]\+ *リポジトリ\|利用者は' README.md
+# Long reasons (rejected alternatives, history) left in the README
+# Note: a one-sentence reason attached to a rule is normal, so this matches a lot; read and judge
+grep -n -i 'used to\|previously\|rejected\|instead of' README.md
+# User counts or lists of consuming repositories
+# Note: version numbers in migration notices may stay
+grep -n -i -E '[0-9]+ (repositories|repos)|used by' README.md
 ```
 
-**いちばん効く検査は grep では書けません。** 2.1 の判定（godoc を開けば分かるか）は、
-実際に `go doc` を開かないと確かめられないからです。語の選び方が違うだけで内容はある、
-ということが頻繁に起きます。手順はこうです。
+**The check that matters most cannot be written with grep.** The test in 2.1 (can it be learned by
+opening godoc?) can only be checked by actually opening `go doc`. The same content often hides behind
+different wording. The steps:
 
-1. `grep -n '^## '` で、骨格外の節を洗い出す。
-2. その節の主張を 1 つずつ取り出し、対象のシンボルを特定する。
-3. `go doc <パッケージ> <シンボル>` を**実際に開いて**確かめる。
-4. あれば README から落とす。無ければ残す。
+1. List sections outside the skeleton with `grep -n '^## '`.
+2. Take each claim in a section and identify the symbol it is about.
+3. **Actually open** `go doc <package> <symbol>`.
+4. If it is there, drop it from the README. If not, keep it.
 
-初回の適用でこれを怠り、ある README は 44% が godoc の写しのまま残りました。
+The first application skipped this, and one README was left with 44% copied from godoc.
 
 ---
 
-## 更新履歴
+## Changelog
 
-- 2026-09-04: 初版。19 本のライブラリの README を突き合わせ、1 本だけが持っていた
-  三分割の規則（godoc / README / CLAUDE.md）を全体の規約にした。骨格は固定せず、
-  見出しの語彙と「書かないもの」だけを決めている。同日の適用で 2 点を緩めた —
-  見出しの語彙に実在した表記（コア・コンセプト、英語見出し）を足し、CLAUDE.md は
-  必須ではなく「必要が出たら置く」に改めた（規則に 1 文添えた理由は README に置いてよく、
-  1 関数で完結する理由は doc コメントが最も近い置き場だと分かったため）。
-- 2026-09-04: 「知らないと高くつく罠は README に残す」を、三分割の判定より下に順位づけた。
-  この 2 つが衝突したとき前者を優先すると、罠の節が godoc の写しになる（ある README では
-  44%）。判定は「この罠を踏む人は、踏む前に対象の godoc を開いているか」。あわせて、
-  例を消す前に `Example` を作ること（1 つ失った）と、この判定は grep では確かめられないことを
-  §4 に書いた。
+- 2026-09-04: First version. The READMEs of 19 libraries were compared, and the three-way split (godoc
+  / README / CLAUDE.md) that only one of them had became the convention for all. The skeleton is not
+  fixed; only the heading vocabulary and "what not to write" are. Applying it the same day loosened two
+  points: the "do not use" column gained forms that actually existed (Core concepts, English-only headings),
+  and CLAUDE.md became "add it when needed" rather than required (a one-sentence reason attached to a
+  rule may stay in the README, and a reason confined to one function is closest to its doc comment).
+- 2026-09-04: "Keep traps that are expensive not to know in the README" was ranked below the three-way
+  split. When the two conflict and the former wins, the trap section becomes a copy of godoc (44% in one
+  README). The test is "has the person who steps on this trap already opened its godoc?" Section 4 also
+  gained: create an `Example` before deleting an example (one was lost), and this test cannot be
+  checked with grep.
+- 2026-11-10: Translated to English. The repositories moved to English, so README.md is English with a
+  Japanese README.ja.md (3.3 reversed), headings are English, and 2.7 records the language of
+  READMEs, CLAUDE.md, comments, messages and test names.
