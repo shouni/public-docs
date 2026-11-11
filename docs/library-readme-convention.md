@@ -155,6 +155,26 @@ README only.
 | Test names and subtest names | English |
 | Data | Japanese stays only where it is the data itself: prompts, end-user UI text, fixtures, and test case names that are themselves input data |
 
+### 2.8 Badges
+
+One line per badge, in this order. The repositories agreed on it before it was written down; it is
+written here so the next repository does not have to infer it.
+
+| Order | Badge | Libraries (Go) | Applications | Python tools |
+|---|---|---|---|---|
+| 1 | CI (the `ci.yml` workflow, no branch query) | ✓ | ✓ | ✓ |
+| 2 | Status | ✓ | ✓ | ✓ |
+| 3 | Language | Go | Go | Python |
+| 4 | Version or platform | Go Version (from `go.mod`) | Platform | Python Version (the oldest the pinned dependencies support) |
+| 5 | GitHub tag (latest by date) | ✓ | — | ✓ |
+| 6 | License | ✓ | ✓ | ✓ |
+| 7 | Reference | Go Reference (pkg.go.dev) | — | — |
+
+**A badge states only what is checked.** The Python Version badge once said 3.11+ while the pinned
+numpy and pysubs2 needed 3.12; the CI matrix now runs the oldest version the badge names, so the two
+cannot drift apart again. A repository without CI (such as a configuration-only one) leaves out the
+CI badge rather than pointing at nothing.
+
 ---
 
 ## 3. Rejected alternatives
@@ -206,6 +226,8 @@ grep -c 'README.ja.md' README.md; grep -c '(README.md)' README.ja.md
 perl -CSD -ne 'print "$.: $_" if /[\p{Hiragana}\p{Katakana}\p{Han}]/' README.md
 # The two copies have the same number of sections
 diff <(grep -c '^## ' README.md) <(grep -c '^## ' README.ja.md)
+# Badge order (2.8): compare with the table
+grep -oE '^\[!\[[^]]+' README.md | sed 's/\[!\[//'
 # Copies of godoc (field tables, method tables)
 # Note: also matches package tables and field definitions of files the user writes by hand; read the table to judge
 grep -n '^| `' README.md
@@ -232,6 +254,8 @@ The first application skipped this, and one README was left with 44% copied from
 
 ## Changelog
 
+- 2026-11-11: Added 2.8 Badges. The order the Go repositories already shared (CI, Status, Language,
+  version or platform, tag, License, Go Reference) is now written down, with the Python tools in it.
 - 2026-09-04: First version. The READMEs of 19 libraries were compared, and the three-way split (godoc
   / README / CLAUDE.md) that only one of them had became the convention for all. The skeleton is not
   fixed; only the heading vocabulary and "what not to write" are. Applying it the same day loosened two
