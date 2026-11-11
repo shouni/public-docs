@@ -54,7 +54,7 @@ test in 2.1.
 
 ```markdown
 # <emoji> <app name>
-<badges>
+<badges>          ← order: library-readme-convention.md §2.8
 
 English | [日本語](README.ja.md)
 
