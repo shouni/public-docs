@@ -54,5 +54,6 @@ diff <(grep -o 'docs/[a-z-]*\.md' README.md | sort -u) <(ls -1 docs/ | sed 's|^|
 
 ## License
 
-Copyright of the documents belongs to the author.
-Where terms of use need to be stated, put them in a separate license file or in the document itself.
+The documents in this repository are licensed under [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/). You may share and adapt them, including commercially, as long as you give credit (the author and a link to this repository). The full text is in [LICENSE](LICENSE).
+
+The code in the other repositories keeps its own license (MIT).
